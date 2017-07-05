@@ -1,0 +1,4 @@
+*.o
+*_cholesky.c
+cholesky
+cholesky-*
