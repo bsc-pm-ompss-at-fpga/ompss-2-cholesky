@@ -1,4 +1,4 @@
-# Matmul
+# Cholesky
 
 **Name**: Cholesky Factorization Kernel  
 **Contact Person**: PM Group, pm-tools@bsc.es  
@@ -18,7 +18,7 @@ The task implementation requires support for one external library that implement
 Clone the repository:
 ```
 git clone https://pm.bsc.es/gitlab/applications/ompss/cholesky.git
-cd matmul
+cd cholesky
 ```
 
 Build the application binaries:
