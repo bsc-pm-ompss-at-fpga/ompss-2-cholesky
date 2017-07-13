@@ -35,38 +35,38 @@
 #include "cholesky.h"
 
 #pragma omp task inout([ts][ts]A)
-void omp_potrf(double * const A, int ts, int ld)
+void omp_potrf(type_t * const A, int ts, int ld)
 {
    static int INFO;
    static const char L = 'L';
-   dpotrf_(&L, &ts, A, &ld, &INFO);
+   potrf_(&L, &ts, A, &ld, &INFO);
 }
 
 #pragma omp task in([ts][ts]A) inout([ts][ts]B)
-void omp_trsm(double *A, double *B, int ts, int ld)
+void omp_trsm(type_t *A, type_t *B, int ts, int ld)
 {
    static char LO = 'L', TR = 'T', NU = 'N', RI = 'R';
-   static double DONE = 1.0;
-   dtrsm_(&RI, &LO, &TR, &NU, &ts, &ts, &DONE, A, &ld, B, &ld );
+   static type_t DONE = 1.0;
+   trsm_(&RI, &LO, &TR, &NU, &ts, &ts, &DONE, A, &ld, B, &ld );
 }
 
 #pragma omp task in([ts][ts]A) inout([ts][ts]B)
-void omp_syrk(double *A, double *B, int ts, int ld)
+void omp_syrk(type_t *A, type_t *B, int ts, int ld)
 {
    static char LO = 'L', NT = 'N';
-   static double DONE = 1.0, DMONE = -1.0;
-   dsyrk_(&LO, &NT, &ts, &ts, &DMONE, A, &ld, &DONE, B, &ld );
+   static type_t DONE = 1.0, DMONE = -1.0;
+   syrk_(&LO, &NT, &ts, &ts, &DMONE, A, &ld, &DONE, B, &ld );
 }
 
 #pragma omp task in([ts][ts]A, [ts][ts]B) inout([ts][ts]C)
-void omp_gemm(double *A, double *B, double *C, int ts, int ld)
+void omp_gemm(type_t *A, type_t *B, type_t *C, int ts, int ld)
 {
    static const char TR = 'T', NT = 'N';
-   static double DONE = 1.0, DMONE = -1.0;
-   dgemm_(&NT, &TR, &ts, &ts, &ts, &DMONE, A, &ld, B, &ld, &DONE, C, &ld);
+   static type_t DONE = 1.0, DMONE = -1.0;
+   gemm_(&NT, &TR, &ts, &ts, &ts, &DMONE, A, &ld, B, &ld, &DONE, C, &ld);
 }
 
-void cholesky_blocked(const int ts, const int nt, double* Ah[nt][nt])
+void cholesky_blocked(const int ts, const int nt, type_t* Ah[nt][nt])
 {
    for (int k = 0; k < nt; k++) {
 
@@ -93,7 +93,11 @@ void cholesky_blocked(const int ts, const int nt, double* Ah[nt][nt])
 int main(int argc, char* argv[])
 {
    char *result[3] = {"n/a","sucessful","UNSUCCESSFUL"};
+#ifdef USE_DOUBLE
    const double eps = BLAS_dfpinfo( blas_eps );
+#else
+   const float eps = BLAS_sfpinfo( blas_eps );
+#endif
 
    if ( argc < 3 ) {
       fprintf( stderr, "USAGE:\t%s <matrix size> <block size> [<check>]\n", argv[0] );
@@ -104,24 +108,24 @@ int main(int argc, char* argv[])
    int check    = argc > 3 ? atoi(argv[3]) : 1; // check result?
 
    // Allocate matrix
-   double * const matrix = (double *) malloc(n * n * sizeof(double));
+   type_t * const matrix = (type_t *) malloc(n * n * sizeof(type_t));
    assert(matrix != NULL);
 
    // Init matrix
    initialize_matrix(n, ts, matrix);
 
    // Allocate matrix
-   double * const original_matrix = (double *) malloc(n * n * sizeof(double));
+   type_t * const original_matrix = (type_t *) malloc(n * n * sizeof(type_t));
    assert(original_matrix != NULL);
 
    const int nt = n / ts;
 
    // Allocate blocked matrix
-   double *Ah[nt][nt];
+   type_t *Ah[nt][nt];
 
    for (int i = 0; i < nt; i++) {
       for (int j = 0; j < nt; j++) {
-         Ah[i][j] = malloc(ts * ts * sizeof(double));
+         Ah[i][j] = malloc(ts * ts * sizeof(type_t));
          assert(Ah[i][j] != NULL);
       }
    }
@@ -134,13 +138,13 @@ int main(int argc, char* argv[])
    printf ("Executing ...\n");
 #endif
 
-   convert_to_blocks(ts, nt, n, (double(*)[n]) matrix, Ah);
+   convert_to_blocks(ts, nt, n, (type_t(*)[n]) matrix, Ah);
 
    const float secs1 = get_time();
-   cholesky_blocked(ts, nt, (double* (*)[nt]) Ah);
+   cholesky_blocked(ts, nt, (type_t* (*)[nt]) Ah);
 
    const float secs2 = get_time();
-   convert_to_linear(ts, nt, n, Ah, (double (*)[n]) matrix);
+   convert_to_linear(ts, nt, n, Ah, (type_t (*)[n]) matrix);
 
    if ( check ) {
       const char uplo = 'L';
