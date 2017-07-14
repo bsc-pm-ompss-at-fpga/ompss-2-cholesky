@@ -28,13 +28,14 @@
 #include <sys/time.h>
 #include <sys/times.h>
 #include <math.h>
-#include <lapacke.h>
 
 #define VERBOSE
 
 #if USE_MKL
+# include <mkl_lapacke.h>
 # include <mkl.h>
 #elif USE_OPENBLAS
+# include <lapacke.h>
 # include <cblas.h>
 #elif USE_ARMPL
 //# include <armpl.h>
