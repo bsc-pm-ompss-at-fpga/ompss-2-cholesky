@@ -316,9 +316,9 @@ static int check_factorization(int N, type_t *A1, type_t *A2, int LDA, char uplo
    type_t Rnorm = lange_(&NORM, &N, &N, Residual, &N, work);
    type_t Anorm = lange_(&NORM, &N, &N, A1, &N, work);
 
-#ifdef VERBOSE
-   printf("============\n");
+   printf("==================================================\n");
    printf("Checking the Cholesky Factorization \n");
+#ifdef VERBOSE
    printf("-- Rnorm = %e \n", Rnorm);
    printf("-- Anorm = %e \n", Anorm);
    printf("-- Anorm*N*eps = %e \n", Anorm*N*eps);
@@ -328,14 +328,11 @@ static int check_factorization(int N, type_t *A1, type_t *A2, int LDA, char uplo
    const int info_factorization = isnan(Rnorm/(Anorm*N*eps)) ||
       isinf(Rnorm/(Anorm*N*eps)) || (Rnorm/(Anorm*N*eps) > 60.0);
 
-#ifdef VERBOSE
    if ( info_factorization){
-      printf("\n-- Factorization is suspicious ! \n\n");
-   }
-   else{
+      fprintf(stderr, "\n-- Factorization is suspicious ! \n\n");
+   } else {
       printf("\n-- Factorization is CORRECT ! \n\n");
    }
-#endif
 
    free(Residual); free(L1); free(L2); free(work);
 
