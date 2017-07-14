@@ -38,7 +38,7 @@
 # include <lapacke.h>
 # include <cblas.h>
 #elif USE_ARMPL
-//# include <armpl.h>
+# include <armpl.h>
 #else
 # error No backend library found. See README for more information
 #endif
