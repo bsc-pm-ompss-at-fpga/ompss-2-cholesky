@@ -35,35 +35,28 @@
 #include "cholesky.h"
 
 #pragma omp task inout([ts][ts]A)
-void omp_potrf(type_t * const A, int ts, int ld)
+void omp_potrf(type_t * const A, int ts)
 {
-   static int INFO;
    static const char L = 'L';
-   potrf_(&L, &ts, A, &ld, &INFO);
+   potrf(LAPACKE_MAT_ORDER, L, ts, A, ts);
 }
 
 #pragma omp task in([ts][ts]A) inout([ts][ts]B)
-void omp_trsm(type_t *A, type_t *B, int ts, int ld)
+void omp_trsm(type_t *A, type_t *B, int ts)
 {
-   static char LO = 'L', TR = 'T', NU = 'N', RI = 'R';
-   static type_t DONE = 1.0;
-   trsm_(&RI, &LO, &TR, &NU, &ts, &ts, &DONE, A, &ld, B, &ld );
+   trsm(CBLAS_MAT_ORDER, CBLAS_RI, CBLAS_LO, CBLAS_T, CBLAS_NU, ts, ts, 1.0, A, ts, B, ts);
 }
 
 #pragma omp task in([ts][ts]A) inout([ts][ts]B)
-void omp_syrk(type_t *A, type_t *B, int ts, int ld)
+void omp_syrk(type_t *A, type_t *B, int ts)
 {
-   static char LO = 'L', NT = 'N';
-   static type_t DONE = 1.0, DMONE = -1.0;
-   syrk_(&LO, &NT, &ts, &ts, &DMONE, A, &ld, &DONE, B, &ld );
+   syrk(CBLAS_MAT_ORDER, CBLAS_LO, CBLAS_NT, ts, ts, -1.0, A, ts, 1.0, B, ts);
 }
 
 #pragma omp task in([ts][ts]A, [ts][ts]B) inout([ts][ts]C)
-void omp_gemm(type_t *A, type_t *B, type_t *C, int ts, int ld)
+void omp_gemm(type_t *A, type_t *B, type_t *C, int ts)
 {
-   static const char TR = 'T', NT = 'N';
-   static type_t DONE = 1.0, DMONE = -1.0;
-   gemm_(&NT, &TR, &ts, &ts, &ts, &DMONE, A, &ld, B, &ld, &DONE, C, &ld);
+   gemm(CBLAS_MAT_ORDER, CBLAS_NT, CBLAS_T, ts, ts, ts, -1.0, A, ts, B, ts, 1.0, C, ts);
 }
 
 void cholesky_blocked(const int ts, const int nt, type_t* Ah[nt][nt])
@@ -71,33 +64,28 @@ void cholesky_blocked(const int ts, const int nt, type_t* Ah[nt][nt])
    for (int k = 0; k < nt; k++) {
 
       // Diagonal Block factorization
-      omp_potrf (Ah[k][k], ts, ts);
+      omp_potrf (Ah[k][k], ts);
 
       // Triangular systems
       for (int i = k + 1; i < nt; i++) {
-         omp_trsm (Ah[k][k], Ah[k][i], ts, ts);
+         omp_trsm (Ah[k][k], Ah[k][i], ts);
       }
 
       // Update trailing matrix
       for (int i = k + 1; i < nt; i++) {
          for (int j = k + 1; j < i; j++) {
-            omp_gemm (Ah[k][i], Ah[k][j], Ah[j][i], ts, ts);
+            omp_gemm (Ah[k][i], Ah[k][j], Ah[j][i], ts);
          }
-         omp_syrk (Ah[k][i], Ah[i][i], ts, ts);
+         omp_syrk (Ah[k][i], Ah[i][i], ts);
       }
 
    }
-#pragma omp taskwait
+   #pragma omp taskwait
 }
 
 int main(int argc, char* argv[])
 {
    char *result[3] = {"n/a","sucessful","UNSUCCESSFUL"};
-#ifdef USE_DOUBLE
-   const double eps = BLAS_dfpinfo( blas_eps );
-#else
-   const float eps = BLAS_sfpinfo( blas_eps );
-#endif
 
    if ( argc < 3 ) {
       fprintf( stderr, "USAGE:\t%s <matrix size> <block size> [<check>]\n", argv[0] );
@@ -106,6 +94,11 @@ int main(int argc, char* argv[])
    const int  n = atoi(argv[1]); // matrix size
    const int ts = atoi(argv[2]); // tile size
    int check    = argc > 3 ? atoi(argv[3]) : 1; // check result?
+   const int nt = n / ts; // number of tiles
+   if ( n % ts != 0 ) {
+      fprintf( stderr, "ERROR:\t<matrix size> is not multiple of <block size>\n" );
+      exit( -1 );
+   }
 
    // Allocate matrix
    type_t * const matrix = (type_t *) malloc(n * n * sizeof(type_t));
@@ -114,11 +107,13 @@ int main(int argc, char* argv[])
    // Init matrix
    initialize_matrix(n, ts, matrix);
 
-   // Allocate matrix
-   type_t * const original_matrix = (type_t *) malloc(n * n * sizeof(type_t));
-   assert(original_matrix != NULL);
-
-   const int nt = n / ts;
+   type_t * original_matrix = NULL;
+   if ( check ) {
+      // Allocate matrix
+      original_matrix = (type_t *) malloc(n * n * sizeof(type_t));
+      assert(original_matrix != NULL);
+      memcpy(original_matrix, matrix, n * n * sizeof(type_t));
+   }
 
    // Allocate blocked matrix
    type_t *Ah[nt][nt];
@@ -128,10 +123,6 @@ int main(int argc, char* argv[])
          Ah[i][j] = malloc(ts * ts * sizeof(type_t));
          assert(Ah[i][j] != NULL);
       }
-   }
-
-   for (int i = 0; i < n * n; i++ ) {
-      original_matrix[i] = matrix[i];
    }
 
 #ifdef VERBOSE
@@ -148,10 +139,9 @@ int main(int argc, char* argv[])
 
    if ( check ) {
       const char uplo = 'L';
-      if ( check_factorization( n, original_matrix, matrix, n, uplo, eps) ) check++;
+      if ( check_factorization( n, original_matrix, matrix, n, uplo) ) check++;
+      free(original_matrix);
    }
-
-   free(original_matrix);
 
    float time = secs2 - secs1;
    float gflops = (((1.0 / 3.0) * n * n * n) / (time));
