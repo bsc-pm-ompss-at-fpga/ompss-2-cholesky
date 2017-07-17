@@ -49,26 +49,27 @@
 #  define trsm  cblas_strsm
 #  define trmm  cblas_strmm
 #  define syrk  cblas_ssyrk
-#  define potrf LAPACKE_spotrf
-#  define lacpy LAPACKE_slacpy
-#  define lange LAPACKE_slange
-#  define larnv LAPACKE_slarnv
+#  define potrf spotrf
+#  define lacpy slacpy
+#  define lange slange
+#  define larnv slarnv
 #else
 #  define type_t double
 #  define gemm  cblas_dgemm
 #  define trsm  cblas_dtrsm
 #  define trmm  cblas_dtrmm
 #  define syrk  cblas_dsyrk
-#  define potrf LAPACKE_dpotrf
-#  define lacpy LAPACKE_dlacpy
-#  define lange LAPACKE_dlange
-#  define larnv LAPACKE_dlarnv
+#  define potrf dpotrf
+#  define lacpy dlacpy
+#  define lange dlange
+#  define larnv dlarnv
 #endif
-#define LAPACKE_MAT_ORDER LAPACK_COL_MAJOR
 #define CBLAS_MAT_ORDER   CblasColMajor
 #define CBLAS_T           CblasTrans
 #define CBLAS_NT          CblasNoTrans
 #define CBLAS_LO          CblasLower
+#define CBLAS_UP          CblasUpper
+#define CBLAS_LF          CblasLeft
 #define CBLAS_RI          CblasRight
 #define CBLAS_NU          CblasNonUnit
 
@@ -130,21 +131,22 @@ static int check_factorization(int N, type_t *A1, type_t *A2, int LDA, char uplo
    type_t *Residual = (type_t *)malloc(N*N*sizeof(type_t));
    type_t *L1       = (type_t *)malloc(N*N*sizeof(type_t));
    type_t *L2       = (type_t *)malloc(N*N*sizeof(type_t));
+   type_t *work     = (type_t *)malloc(N*sizeof(type_t));
 
    memset((void*)L1, 0, N*N*sizeof(type_t));
    memset((void*)L2, 0, N*N*sizeof(type_t));
 
-   lacpy(LAPACKE_MAT_ORDER, ALL, N, N, A1, LDA, Residual, N);
+   lacpy(&ALL, &N, &N, A1, &LDA, Residual, &N);
 
    /* Dealing with L'L or U'U  */
    if (uplo == 'U'){
-      lacpy(LAPACKE_MAT_ORDER, UP, N, N, A2, LDA, L1, N);
-      lacpy(LAPACKE_MAT_ORDER, UP, N, N, A2, LDA, L2, N);
-      trmm(CBLAS_MAT_ORDER, CBLAS_LO, CBLAS_LO, CBLAS_T, CBLAS_NU,
+      lacpy(&UP, &N, &N, A2, &LDA, L1, &N);
+      lacpy(&UP, &N, &N, A2, &LDA, L2, &N);
+      trmm(CBLAS_MAT_ORDER, CBLAS_LF, CBLAS_UP, CBLAS_T, CBLAS_NU,
          N, N, alpha, L1, N, L2, N);
    } else {
-      lacpy(LAPACKE_MAT_ORDER, LO, N, N, A2, LDA, L1, N);
-      lacpy(LAPACKE_MAT_ORDER, LO, N, N, A2, LDA, L2, N);
+      lacpy(&LO, &N, &N, A2, &LDA, L1, &N);
+      lacpy(&LO, &N, &N, A2, &LDA, L2, &N);
       trmm(CBLAS_MAT_ORDER, CBLAS_RI, CBLAS_LO, CBLAS_T, CBLAS_NU,
          N, N, alpha, L1, N, L2, N);
    }
@@ -156,8 +158,8 @@ static int check_factorization(int N, type_t *A1, type_t *A2, int LDA, char uplo
       }
    }
 
-   type_t Rnorm = lange(LAPACKE_MAT_ORDER, NORM, N, N, Residual, N);
-   type_t Anorm = lange(LAPACKE_MAT_ORDER, NORM, N, N, A1, N);
+   type_t Rnorm = lange(&NORM, &N, &N, Residual, &N, work);
+   type_t Anorm = lange(&NORM, &N, &N, A1, &N, work);
 
    printf("==================================================\n");
    printf("Checking the Cholesky Factorization \n");
@@ -177,9 +179,10 @@ static int check_factorization(int N, type_t *A1, type_t *A2, int LDA, char uplo
       printf("\n-- Factorization is CORRECT ! \n\n");
    }
 
-   free(Residual);
-   free(L1);
+   free(work);
    free(L2);
+   free(L1);
+   free(Residual);
 
    return info_factorization;
 }
@@ -194,7 +197,7 @@ void initialize_matrix(const int n, const int ts, type_t *matrix)
 #endif
 
    for (int i = 0; i < n*n; i+=n) {
-      larnv(intONE, &ISEED[0], n, &matrix[i]);
+      larnv(&intONE, &ISEED[0], &n, &matrix[i]);
    }
 
    type_t a = (type_t)n;

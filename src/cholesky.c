@@ -38,7 +38,8 @@
 void omp_potrf(type_t * const A, int ts)
 {
    static const char L = 'L';
-   potrf(LAPACKE_MAT_ORDER, L, ts, A, ts);
+   int info;
+   potrf(&L, &ts, A, &ts, &info);
 }
 
 #pragma omp task in([ts][ts]A) inout([ts][ts]B)
