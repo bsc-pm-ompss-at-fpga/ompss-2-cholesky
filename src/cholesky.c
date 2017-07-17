@@ -135,6 +135,106 @@ void cholesky_blocked(const int nt, type_t* Ah[nt][nt])
    #pragma omp taskwait
 }
 
+// Robust Check the factorization of the matrix A2
+static int check_factorization(int N, type_t *A1, type_t *A2, int LDA, char uplo)
+{
+#ifdef VERBOSE
+   printf ("Checking result ...\n");
+#endif
+
+   char NORM = 'I', ALL = 'A', UP = 'U', LO = 'L', TR = 'T', NU = 'N', RI = 'R';
+   type_t alpha = 1.0;
+   type_t const b = 2.0;
+#ifdef USE_FLOAT
+   const int t = 24;
+#else
+   const int t = 53;
+#endif
+   type_t const eps = pow_di( b, -t );
+
+   type_t *Residual = (type_t *)malloc(N*N*sizeof(type_t));
+   type_t *L1       = (type_t *)malloc(N*N*sizeof(type_t));
+   type_t *L2       = (type_t *)malloc(N*N*sizeof(type_t));
+   type_t *work     = (type_t *)malloc(N*sizeof(type_t));
+
+   memset((void*)L1, 0, N*N*sizeof(type_t));
+   memset((void*)L2, 0, N*N*sizeof(type_t));
+
+   lacpy(&ALL, &N, &N, A1, &LDA, Residual, &N);
+
+   /* Dealing with L'L or U'U  */
+   if (uplo == 'U'){
+      lacpy(&UP, &N, &N, A2, &LDA, L1, &N);
+      lacpy(&UP, &N, &N, A2, &LDA, L2, &N);
+      trmm(CBLAS_MAT_ORDER, CBLAS_LF, CBLAS_UP, CBLAS_T, CBLAS_NU,
+         N, N, alpha, L1, N, L2, N);
+   } else {
+      lacpy(&LO, &N, &N, A2, &LDA, L1, &N);
+      lacpy(&LO, &N, &N, A2, &LDA, L2, &N);
+      trmm(CBLAS_MAT_ORDER, CBLAS_RI, CBLAS_LO, CBLAS_T, CBLAS_NU,
+         N, N, alpha, L1, N, L2, N);
+   }
+
+   /* Compute the Residual || A -L'L|| */
+   for (int i = 0; i < N; i++) {
+      for (int j = 0; j < N; j++) {
+         Residual[j*N+i] = L2[j*N+i] - Residual[j*N+i];
+      }
+   }
+
+   type_t Rnorm = lange(&NORM, &N, &N, Residual, &N, work);
+   type_t Anorm = lange(&NORM, &N, &N, A1, &N, work);
+
+   printf("==================================================\n");
+   printf("Checking the Cholesky Factorization \n");
+#ifdef VERBOSE
+   printf("-- Rnorm = %e \n", Rnorm);
+   printf("-- Anorm = %e \n", Anorm);
+   printf("-- Anorm*N*eps = %e \n", Anorm*N*eps);
+   printf("-- ||L'L-A||_oo/(||A||_oo.N.eps) = %e \n",Rnorm/(Anorm*N*eps));
+#endif
+
+   const int info_factorization = isnan(Rnorm/(Anorm*N*eps)) ||
+      isinf(Rnorm/(Anorm*N*eps)) || (Rnorm/(Anorm*N*eps) > 60.0);
+
+   if ( info_factorization ){
+      fprintf(stderr, "\n-- Factorization is suspicious ! \n\n");
+   } else {
+      printf("\n-- Factorization is CORRECT ! \n\n");
+   }
+
+   free(work);
+   free(L2);
+   free(L1);
+   free(Residual);
+
+   return info_factorization;
+}
+
+void initialize_matrix(const int n, type_t *matrix)
+{
+   int ISEED[4] = {0,0,0,1};
+   int intONE=1;
+
+#ifdef VERBOSE
+   printf("Initializing matrix with random values ...\n");
+#endif
+
+   for (int i = 0; i < n*n; i+=n) {
+      larnv(&intONE, &ISEED[0], &n, &matrix[i]);
+   }
+
+   type_t a = (type_t)n;
+   for (int i=0; i<n; i++) {
+      for (int j=0; j<n; j++) {
+         matrix[j*n + i] = matrix[j*n + i] + matrix[i*n + j];
+         matrix[i*n + j] = matrix[j*n + i];
+      }
+      //add_to_diag
+      matrix[i*n + i] += a;
+   }
+}
+
 int main(int argc, char* argv[])
 {
    char *result[3] = {"n/a","sucessful","UNSUCCESSFUL"};

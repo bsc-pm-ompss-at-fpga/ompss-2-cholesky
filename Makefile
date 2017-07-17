@@ -55,4 +55,5 @@ $(PROGRAM_)-d:  ./src/$(PROGRAM_).c
 	$(MCC_) $(CFLAGS_) $(MCC_FLAGS_) $(MCC_FLAGS_D_) $^ -o $@ $(LDFLAGS_)
 
 clean:
-	rm -f *.o $(PROGS_) $(MCC_)_$(PROGRAM_).c
+	rm -f *.o $(PROGS_) $(MCC_)_$(PROGRAM_).c *_hls_automatic_mcxx.cpp *.config cholesky_vivado.log
+	rm -rf cholesky_vivado

@@ -2,3 +2,5 @@
 *_cholesky.c
 cholesky
 cholesky-*
+*_hls_automatic_mcxx.cpp
+*.config
