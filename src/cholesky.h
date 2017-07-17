@@ -30,6 +30,7 @@
 #include <math.h>
 
 #define VERBOSE
+#define USE_FLOAT
 
 #if USE_MKL
 # include <mkl_lapacke.h>
@@ -40,7 +41,8 @@
 #elif USE_ARMPL
 # include <armpl.h>
 #else
-# error No backend library found. See README for more information
+//NOTE: Cannot throw the error as Vivado HLS will not compile
+//# error No backend library found. See README for more information
 #endif
 
 // NOTE: Cannot be const if we want to avoid warnings when calling Blas

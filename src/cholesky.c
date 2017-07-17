@@ -34,6 +34,7 @@
 
 #include "cholesky.h"
 
+#pragma omp target device(smp) copy_deps
 #pragma omp task inout([ts]A)
 void omp_potrf(type_t (*A)[ts])
 {
@@ -42,25 +43,68 @@ void omp_potrf(type_t (*A)[ts])
    potrf(&L, &ts, (type_t *)A, &ts, &info);
 }
 
+#pragma omp target device(fpga) copy_deps onto(2)
 #pragma omp task in([ts]A) inout([ts]B)
 void omp_trsm(type_t (*A)[ts], type_t (*B)[ts])
 {
+#if 0
    trsm(CBLAS_MAT_ORDER, CBLAS_RI, CBLAS_LO, CBLAS_T, CBLAS_NU,
       ts, ts, 1.0, (type_t *)A, ts, (type_t *)B, ts);
+#else
+   type_t tmp_row[ts];
+   for (int k = 0; k < ts; ++k) {
+      type_t temp = 1. / A[k][k];
+      for (int i__ = 0; i__ < ts; ++i__) {
+         B[k][i__] = tmp_row[i__] = temp * B[k][i__];
+      }
+      for (int j = k + 1 ; j < ts; ++j) {
+         temp = A[k][j];
+         for (int i__ = 0; i__ < ts; ++i__) {
+            B[j][i__] -= temp * tmp_row[i__];
+         }
+      }
+   }
+#endif
 }
 
+#pragma omp target device(fpga) copy_deps onto(1)
 #pragma omp task in([ts]A) inout([ts]B)
 void omp_syrk(type_t (*A)[ts], type_t (*B)[ts])
 {
+#if 0
    syrk(CBLAS_MAT_ORDER, CBLAS_LO, CBLAS_NT,
       ts, ts, -1.0, (type_t *)A, ts, 1.0, (type_t *)B, ts);
+#else
+   for (int j = 0; j < ts; ++j) {
+      for (int i__ = j; i__ < ts; ++i__) {
+         type_t temp = B[j][i__];
+         for (int l = 0; l < ts; ++l) {
+            temp += -A[l][j] * A[l][i__];
+         }
+         B[j][i__] = temp;
+      }
+   }
+#endif
 }
 
+#pragma omp target device(fpga) copy_deps onto(0)
 #pragma omp task in([ts]A, [ts]B) inout([ts]C)
 void omp_gemm(type_t (*A)[ts], type_t (*B)[ts], type_t (*C)[ts])
 {
+#if 0
    gemm(CBLAS_MAT_ORDER, CBLAS_NT, CBLAS_T,
       ts, ts, ts, -1.0, (type_t *)A, ts, (type_t *)B, ts, 1.0, (type_t *)C, ts);
+#else
+   for (int j = 0; j < ts; ++j) {
+      for (int i__ = 0; i__ < ts; ++i__) {
+         type_t temp = C[j][i__];
+         for (int l = 0; l < ts; ++l) {
+            temp += -B[l][j] * A[l][i__];
+         }
+         C[j][i__] = temp;
+      }
+   }
+#endif
 }
 
 void cholesky_blocked(const int nt, type_t* Ah[nt][nt])
