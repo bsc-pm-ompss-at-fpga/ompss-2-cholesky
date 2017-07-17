@@ -43,6 +43,9 @@
 # error No backend library found. See README for more information
 #endif
 
+// NOTE: Cannot be const if we want to avoid warnings when calling Blas
+int ts = 32; // tile size
+
 #if defined(USE_FLOAT)
 #  define type_t float
 #  define gemm  cblas_sgemm
@@ -187,7 +190,7 @@ static int check_factorization(int N, type_t *A1, type_t *A2, int LDA, char uplo
    return info_factorization;
 }
 
-void initialize_matrix(const int n, const int ts, type_t *matrix)
+void initialize_matrix(const int n, type_t *matrix)
 {
    int ISEED[4] = {0,0,0,1};
    int intONE=1;
@@ -211,7 +214,7 @@ void initialize_matrix(const int n, const int ts, type_t *matrix)
    }
 }
 
-static void gather_block(const int N, const int ts, type_t *Alin, type_t *A)
+static void gather_block(const int N, type_t *Alin, type_t *A)
 {
    for (int i = 0; i < ts; i++) {
       for (int j = 0; j < ts; j++) {
@@ -220,7 +223,7 @@ static void gather_block(const int N, const int ts, type_t *Alin, type_t *A)
    }
 }
 
-static void scatter_block(const int N, const int ts, type_t *A, type_t *Alin)
+static void scatter_block(const int N, type_t *A, type_t *Alin)
 {
    for (int i = 0; i < ts; i++) {
       for (int j = 0; j < ts; j++) {
@@ -229,20 +232,20 @@ static void scatter_block(const int N, const int ts, type_t *A, type_t *Alin)
    }
 }
 
-static void convert_to_blocks(const int ts, const int DIM, const int N, type_t Alin[N][N], type_t *A[DIM][DIM])
+static void convert_to_blocks(const int DIM, const int N, type_t (*Alin)[N], type_t *A[DIM][DIM])
 {
    for (int i = 0; i < DIM; i++) {
       for (int j = 0; j < DIM; j++) {
-         gather_block ( N, ts, &Alin[i*ts][j*ts], A[i][j]);
+         gather_block(N, &Alin[i*ts][j*ts], A[i][j]);
       }
    }
 }
 
-static void convert_to_linear(const int ts, const int DIM, const int N, type_t *A[DIM][DIM], type_t Alin[N][N])
+static void convert_to_linear(const int DIM, const int N, type_t *A[DIM][DIM], type_t (*Alin)[N])
 {
    for (int i = 0; i < DIM; i++) {
       for (int j = 0; j < DIM; j++) {
-         scatter_block ( N, ts, A[i][j], (type_t *) &Alin[i*ts][j*ts]);
+         scatter_block(N, A[i][j], (type_t *) &Alin[i*ts][j*ts]);
       }
    }
 }

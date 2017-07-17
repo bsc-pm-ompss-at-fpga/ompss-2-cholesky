@@ -34,50 +34,57 @@
 
 #include "cholesky.h"
 
-#pragma omp task inout([ts][ts]A)
-void omp_potrf(type_t * const A, int ts)
+#pragma omp task inout([ts]A)
+void omp_potrf(type_t (*A)[ts])
 {
    static const char L = 'L';
    int info;
-   potrf(&L, &ts, A, &ts, &info);
+   potrf(&L, &ts, (type_t *)A, &ts, &info);
 }
 
-#pragma omp task in([ts][ts]A) inout([ts][ts]B)
-void omp_trsm(type_t *A, type_t *B, int ts)
+#pragma omp task in([ts]A) inout([ts]B)
+void omp_trsm(type_t (*A)[ts], type_t (*B)[ts])
 {
-   trsm(CBLAS_MAT_ORDER, CBLAS_RI, CBLAS_LO, CBLAS_T, CBLAS_NU, ts, ts, 1.0, A, ts, B, ts);
+   trsm(CBLAS_MAT_ORDER, CBLAS_RI, CBLAS_LO, CBLAS_T, CBLAS_NU,
+      ts, ts, 1.0, (type_t *)A, ts, (type_t *)B, ts);
 }
 
-#pragma omp task in([ts][ts]A) inout([ts][ts]B)
-void omp_syrk(type_t *A, type_t *B, int ts)
+#pragma omp task in([ts]A) inout([ts]B)
+void omp_syrk(type_t (*A)[ts], type_t (*B)[ts])
 {
-   syrk(CBLAS_MAT_ORDER, CBLAS_LO, CBLAS_NT, ts, ts, -1.0, A, ts, 1.0, B, ts);
+   syrk(CBLAS_MAT_ORDER, CBLAS_LO, CBLAS_NT,
+      ts, ts, -1.0, (type_t *)A, ts, 1.0, (type_t *)B, ts);
 }
 
-#pragma omp task in([ts][ts]A, [ts][ts]B) inout([ts][ts]C)
-void omp_gemm(type_t *A, type_t *B, type_t *C, int ts)
+#pragma omp task in([ts]A, [ts]B) inout([ts]C)
+void omp_gemm(type_t (*A)[ts], type_t (*B)[ts], type_t (*C)[ts])
 {
-   gemm(CBLAS_MAT_ORDER, CBLAS_NT, CBLAS_T, ts, ts, ts, -1.0, A, ts, B, ts, 1.0, C, ts);
+   gemm(CBLAS_MAT_ORDER, CBLAS_NT, CBLAS_T,
+      ts, ts, ts, -1.0, (type_t *)A, ts, (type_t *)B, ts, 1.0, (type_t *)C, ts);
 }
 
-void cholesky_blocked(const int ts, const int nt, type_t* Ah[nt][nt])
+void cholesky_blocked(const int nt, type_t* Ah[nt][nt])
 {
    for (int k = 0; k < nt; k++) {
 
       // Diagonal Block factorization
-      omp_potrf (Ah[k][k], ts);
+      omp_potrf( (type_t (*)[ts])Ah[k][k] );
 
       // Triangular systems
       for (int i = k + 1; i < nt; i++) {
-         omp_trsm (Ah[k][k], Ah[k][i], ts);
+         omp_trsm( (type_t (*)[ts])Ah[k][k],
+                   (type_t (*)[ts])Ah[k][i] );
       }
 
       // Update trailing matrix
       for (int i = k + 1; i < nt; i++) {
          for (int j = k + 1; j < i; j++) {
-            omp_gemm (Ah[k][i], Ah[k][j], Ah[j][i], ts);
+            omp_gemm( (type_t (*)[ts])Ah[k][i],
+                      (type_t (*)[ts])Ah[k][j],
+                      (type_t (*)[ts])Ah[j][i] );
          }
-         omp_syrk (Ah[k][i], Ah[i][i], ts);
+         omp_syrk( (type_t (*)[ts])Ah[k][i],
+                   (type_t (*)[ts])Ah[i][i] );
       }
 
    }
@@ -89,12 +96,11 @@ int main(int argc, char* argv[])
    char *result[3] = {"n/a","sucessful","UNSUCCESSFUL"};
 
    if ( argc < 3 ) {
-      fprintf( stderr, "USAGE:\t%s <matrix size> <block size> [<check>]\n", argv[0] );
+      fprintf( stderr, "USAGE:\t%s <matrix size> [<check>]\n", argv[0] );
       exit( -1 );
    }
    const int  n = atoi(argv[1]); // matrix size
-   const int ts = atoi(argv[2]); // tile size
-   int check    = argc > 3 ? atoi(argv[3]) : 1; // check result?
+   int check    = argc > 2 ? atoi(argv[2]) : 1; // check result?
    const int nt = n / ts; // number of tiles
    if ( n % ts != 0 ) {
       fprintf( stderr, "ERROR:\t<matrix size> is not multiple of <block size>\n" );
@@ -106,7 +112,7 @@ int main(int argc, char* argv[])
    assert(matrix != NULL);
 
    // Init matrix
-   initialize_matrix(n, ts, matrix);
+   initialize_matrix(n, matrix);
 
    type_t * original_matrix = NULL;
    if ( check ) {
@@ -130,17 +136,17 @@ int main(int argc, char* argv[])
    printf ("Executing ...\n");
 #endif
 
-   convert_to_blocks(ts, nt, n, (type_t(*)[n]) matrix, Ah);
+   convert_to_blocks(nt, n, (type_t(*)[n]) matrix, Ah);
 
    const float secs1 = get_time();
-   cholesky_blocked(ts, nt, (type_t* (*)[nt]) Ah);
+   cholesky_blocked(nt, (type_t* (*)[nt]) Ah);
 
    const float secs2 = get_time();
-   convert_to_linear(ts, nt, n, Ah, (type_t (*)[n]) matrix);
+   convert_to_linear(nt, n, Ah, (type_t (*)[n]) matrix);
 
    if ( check ) {
       const char uplo = 'L';
-      if ( check_factorization( n, original_matrix, matrix, n, uplo) ) check++;
+      if ( check_factorization(n, original_matrix, matrix, n, uplo) ) check++;
       free(original_matrix);
    }
 
