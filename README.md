@@ -48,7 +48,7 @@ For example, the build step to cross-compile the application for ARM using the `
 ```
 export MCC=smpcc
 export CROSS_COMPILE=arm-linux-gnueabihf-
-export ARMPL_DIR=/opt/install-arm/openblas
+export OPENBLAS_DIR=/opt/install-arm/openblas
 make
 ```
 
