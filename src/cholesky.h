@@ -38,8 +38,6 @@
 #elif USE_OPENBLAS
 # include <lapacke.h>
 # include <cblas.h>
-#elif USE_ARMPL
-# include <armpl.h>
 #else
 //NOTE: Cannot throw the error as Vivado HLS will not compile
 //# error No backend library found. See README for more information
@@ -53,20 +51,34 @@ const int ts = 32; // tile size
 #  define trsm  cblas_strsm
 #  define trmm  cblas_strmm
 #  define syrk  cblas_ssyrk
-#  define potrf spotrf
-#  define lacpy slacpy
-#  define lange slange
-#  define larnv slarnv
+#  if USE_MKL
+#    define potrf spotrf
+#    define lacpy slacpy
+#    define lange slange
+#    define larnv slarnv
+#  else
+#    define potrf LAPACK_spotrf
+#    define lacpy LAPACK_slacpy
+#    define lange LAPACK_slange
+#    define larnv LAPACK_slarnv
+#  endif
 #else
 #  define type_t double
 #  define gemm  cblas_dgemm
 #  define trsm  cblas_dtrsm
 #  define trmm  cblas_dtrmm
 #  define syrk  cblas_dsyrk
-#  define potrf dpotrf
-#  define lacpy dlacpy
-#  define lange dlange
-#  define larnv dlarnv
+#  if USE_MKL
+#    define potrf dpotrf
+#    define lacpy dlacpy
+#    define lange dlange
+#    define larnv dlarnv
+#  else
+#    define potrf LAPACK_dpotrf
+#    define lacpy LAPACK_dlacpy
+#    define lange LAPACK_dlange
+#    define larnv LAPACK_dlarnv
+#  endif
 #endif
 #define CBLAS_MAT_ORDER   CblasColMajor
 #define CBLAS_T           CblasTrans
