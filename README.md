@@ -30,6 +30,7 @@ The supported ones are:
   - `CFLAGS`
     - `-DUSE_DMA_MEM`. Defining the `USE_DMA_MEM` variable the blocked matrix is allocated in kernel memory instead of user-space memory.
   - `LDFLAGS`
+  - `GCC`. If not defined, the default value is: `gcc`.
   - `MCC`. If not defined, the default value is: `mcc`. However, for SMP machines we recommend the use of `smpcc`.
   - `CROSS_COMPILE`
   - `MKL_DIR`. Installation directory of MKL library. The default value is: `$MKLROOT`.

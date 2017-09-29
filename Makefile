@@ -36,10 +36,12 @@ else ifeq ($(OPENBLAS_SUPPORT_),YES)
 endif
 
 PROGRAM_ = cholesky
-PROGS_   = $(PROGRAM_)-p $(PROGRAM_)-i $(PROGRAM_)-d
+PROGS_   = $(PROGRAM_)-p $(PROGRAM_)-i $(PROGRAM_)-d $(PROGRAM_)-seq
 
 MCC  ?= mcc
 MCC_  = $(CROSS_COMPILE)$(MCC)
+GCC  ?= gcc
+GCC_  = $(CROSS_COMPILE)$(GCC)
 
 all: $(PROGS_)
 
@@ -51,6 +53,9 @@ $(PROGRAM_)-i:  ./src/$(PROGRAM_).c
 
 $(PROGRAM_)-d:  ./src/$(PROGRAM_).c
 	$(MCC_) $(CFLAGS_) $(MCC_FLAGS_) $(MCC_FLAGS_D_) $^ -o $@ $(LDFLAGS_)
+
+$(PROGRAM_)-seq: ./src/$(PROGRAM_).c
+	$(GCC_) $(CFLAGS_) $^ -o $@ $(LDFLAGS_)
 
 clean:
 	rm -f *.o $(PROGS_) $(MCC_)_$(PROGRAM_).c *_hls_automatic_mcxx.cpp *.config cholesky_vivado.log
