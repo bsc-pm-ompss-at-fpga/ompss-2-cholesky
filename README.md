@@ -28,6 +28,7 @@ make
 You can change the build process defining or modifying some environment variables.
 The supported ones are:
   - `CFLAGS`
+    - `-DUSE_DMA_MEM`. Defining the `USE_DMA_MEM` variable the blocked matrix is allocated in kernel memory instead of user-space memory.
   - `LDFLAGS`
   - `MCC`. If not defined, the default value is: `mcc`. However, for SMP machines we recommend the use of `smpcc`.
   - `CROSS_COMPILE`

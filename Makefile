@@ -4,6 +4,14 @@ MCC_FLAGS_I_ = --instrument
 MCC_FLAGS_D_ = --debug -g -k
 LDFLAGS_     = $(LDFLAGS)
 
+## Check if coies are needed
+ifneq (,$(findstring USE_DMA_MEM,$(CFLAGS_)))
+	# When using Kernel memory no copies are needed
+	MCC_FLAGS_ += --no-copy-deps
+else
+	# Copy deps is the default
+endif
+
 ## MKL Variables
 MKL_DIR      ?= $(MKLROOT)
 MKL_INC_DIR  ?= $(MKL_DIR)/include

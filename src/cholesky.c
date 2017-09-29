@@ -34,7 +34,7 @@
 
 #include "cholesky.h"
 
-#pragma omp target device(smp) copy_deps
+#pragma omp target device(smp)
 #pragma omp task inout([ts]A)
 void omp_potrf(type_t (*A)[ts])
 {
@@ -43,7 +43,7 @@ void omp_potrf(type_t (*A)[ts])
    potrf(&L, &ts, (type_t *)A, &ts, &info);
 }
 
-#pragma omp target device(fpga) copy_deps onto(2)
+#pragma omp target device(fpga) onto(2)
 #pragma omp task in([ts]A) inout([ts]B)
 void omp_trsm(type_t (*A)[ts], type_t (*B)[ts])
 {
@@ -67,7 +67,7 @@ void omp_trsm(type_t (*A)[ts], type_t (*B)[ts])
 #endif
 }
 
-#pragma omp target device(fpga) copy_deps onto(1)
+#pragma omp target device(fpga) onto(1)
 #pragma omp task in([ts]A) inout([ts]B)
 void omp_syrk(type_t (*A)[ts], type_t (*B)[ts])
 {
@@ -87,7 +87,7 @@ void omp_syrk(type_t (*A)[ts], type_t (*B)[ts])
 #endif
 }
 
-#pragma omp target device(fpga) copy_deps onto(0)
+#pragma omp target device(fpga) onto(0)
 #pragma omp task in([ts]A, [ts]B) inout([ts]C)
 void omp_gemm(type_t (*A)[ts], type_t (*B)[ts], type_t (*C)[ts])
 {
@@ -269,9 +269,14 @@ int main(int argc, char* argv[])
    // Allocate blocked matrix
    type_t *Ah[nt][nt];
 
+   size_t s = ts * ts * sizeof(type_t);
    for (int i = 0; i < nt; i++) {
       for (int j = 0; j < nt; j++) {
-         Ah[i][j] = malloc(ts * ts * sizeof(type_t));
+#ifdef USE_DMA_MEM
+         Ah[i][j] = nanos_fpga_alloc_dma_mem(s);
+#else
+         Ah[i][j] = malloc(s);
+#endif
          assert(Ah[i][j] != NULL);
       }
    }
@@ -312,7 +317,11 @@ int main(int argc, char* argv[])
    for (int i = 0; i < nt; i++) {
       for (int j = 0; j < nt; j++) {
          assert(Ah[i][j] != NULL);
+#ifdef USE_DMA_MEM
+         nanos_fpga_free_dma_mem(Ah[i][j]);
+#else
          free(Ah[i][j]);
+#endif
       }
    }
 
