@@ -29,6 +29,8 @@ You can change the build process defining or modifying some environment variable
 The supported ones are:
   - `CFLAGS`
     - `-DUSE_DMA_MEM`. Defining the `USE_DMA_MEM` variable the blocked matrix is allocated in kernel memory instead of user-space memory.
+    - `-DUSE_DOUBLE`. Defining the `USE_DOUBLE` variable the matix elements are of type `double` instead of `float`.
+    - `-DVERBOSE`. Defining the `VERBOSE` variable the application steps are shown meanwhile executed.
   - `LDFLAGS`
   - `GCC`. If not defined, the default value is: `gcc`.
   - `MCC`. If not defined, the default value is: `mcc`. However, for SMP machines we recommend the use of `smpcc`.
@@ -59,9 +61,8 @@ The name of each binary file created by build step ends with a suffix which dete
 
 All versions use the same arguments structure:
 ```
-./cholesky <matrix size> <block size> [<check>]
+./cholesky <matrix size> [<check>]
 ```
 where:
  - `matrix size` is the dimension of the matrices. (Mandatory)
- - `block size` is the dimension of the matrices sub-blocks. (Mandatory)
  - `check` defines if the result must be checked. Default is: TRUE. (Optional)

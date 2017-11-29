@@ -28,10 +28,6 @@
 #include <sys/time.h>
 #include <sys/times.h>
 #include <math.h>
-
-#define VERBOSE
-#define USE_FLOAT
-
 #if USE_MKL
 # include <mkl_lapacke.h>
 # include <mkl.h>
@@ -45,39 +41,41 @@
 
 const int ts = 32; // tile size
 
-#if defined(USE_FLOAT)
-#  define type_t float
-#  define gemm  cblas_sgemm
-#  define trsm  cblas_strsm
-#  define trmm  cblas_strmm
-#  define syrk  cblas_ssyrk
+#if defined(USE_DOUBLE)
+#  define type_t     double
+#  define ELEM_T_STR "double"
+#  define gemm       cblas_dgemm
+#  define trsm       cblas_dtrsm
+#  define trmm       cblas_dtrmm
+#  define syrk       cblas_dsyrk
 #  if USE_MKL
-#    define potrf spotrf
-#    define lacpy slacpy
-#    define lange slange
-#    define larnv slarnv
+#    define potrf    dpotrf
+#    define lacpy    dlacpy
+#    define lange    dlange
+#    define larnv    dlarnv
 #  else
-#    define potrf LAPACK_spotrf
-#    define lacpy LAPACK_slacpy
-#    define lange LAPACK_slange
-#    define larnv LAPACK_slarnv
+#    define potrf    LAPACK_dpotrf
+#    define lacpy    LAPACK_dlacpy
+#    define lange    LAPACK_dlange
+#    define larnv    LAPACK_dlarnv
 #  endif
 #else
-#  define type_t double
-#  define gemm  cblas_dgemm
-#  define trsm  cblas_dtrsm
-#  define trmm  cblas_dtrmm
-#  define syrk  cblas_dsyrk
+#  define type_t     float
+#  define ELEM_T_STR "float"
+#  define gemm       cblas_sgemm
+#  define trsm       cblas_strsm
+#  define trmm       cblas_strmm
+#  define syrk       cblas_ssyrk
 #  if USE_MKL
-#    define potrf dpotrf
-#    define lacpy dlacpy
-#    define lange dlange
-#    define larnv dlarnv
+#    define potrf    spotrf
+#    define lacpy    slacpy
+#    define lange    slange
+#    define larnv    slarnv
 #  else
-#    define potrf LAPACK_dpotrf
-#    define lacpy LAPACK_dlacpy
-#    define lange LAPACK_dlange
-#    define larnv LAPACK_dlarnv
+#    define potrf    LAPACK_spotrf
+#    define lacpy    LAPACK_slacpy
+#    define lange    LAPACK_slange
+#    define larnv    LAPACK_slarnv
 #  endif
 #endif
 #define CBLAS_MAT_ORDER   CblasColMajor

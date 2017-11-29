@@ -305,6 +305,7 @@ int main(int argc, char* argv[])
    // Print results
    printf( "==================== RESULTS ===================== \n" );
    printf( "  Benchmark: %s (%s)\n", "Cholesky", "OmpSs" );
+   printf( "  Elements type: %s\n", ELEM_T_STR );
 #ifdef VERBOSE
    printf( "  Matrix size:           %dx%d\n", n, n);
    printf( "  Block size:            %dx%d\n", ts, ts);
