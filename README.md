@@ -29,6 +29,8 @@ make
 You can change the build process defining or modifying some environment variables.
 The supported ones are:
   - `CFLAGS`
+    - `-DUSE_DOUBLE`. Defining the `USE_DOUBLE` variable the matix elements are of type `double` instead of `float`.
+    - `-DVERBOSE`. Defining the `VERBOSE` variable the application steps are shown meanwhile executed.
   - `LDFLAGS`
   - `MCC`. If not defined, the default value is: `mcc`. However, for SMP machines we recommend the use of `smpcc`.
   - `CROSS_COMPILE`
