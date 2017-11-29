@@ -39,26 +39,28 @@
 #include <sys/time.h>
 #include <sys/times.h>
 
-#if defined(USE_FLOAT)
-#  define type_t float
-#  define gemm_  sgemm_
-#  define trsm_  strsm_
-#  define trmm_  strmm_
-#  define syrk_  ssyrk_
-#  define potrf_ spotrf_
-#  define lacpy_ slacpy_
-#  define lange_ slange_
-#  define larnv_ slarnv_
+#if defined(USE_DOUBLE)
+#  define type_t     double
+#  define ELEM_T_STR "double"
+#  define gemm_      dgemm_
+#  define trsm_      dtrsm_
+#  define trmm_      dtrmm_
+#  define syrk_      dsyrk_
+#  define potrf_     dpotrf_
+#  define lacpy_     dlacpy_
+#  define lange_     dlange_
+#  define larnv_     dlarnv_
 #else
-#  define type_t double
-#  define gemm_  dgemm_
-#  define trsm_  dtrsm_
-#  define trmm_  dtrmm_
-#  define syrk_  dsyrk_
-#  define potrf_ dpotrf_
-#  define lacpy_ dlacpy_
-#  define lange_ dlange_
-#  define larnv_ dlarnv_
+#  define type_t     float
+#  define ELEM_T_STR "float"
+#  define gemm_      sgemm_
+#  define trsm_      strsm_
+#  define trmm_      strmm_
+#  define syrk_      ssyrk_
+#  define potrf_     spotrf_
+#  define lacpy_     slacpy_
+#  define lange_     slange_
+#  define larnv_     slarnv_
 #endif
 
 void dgemm_ (const char *transa, const char *transb, int *l, int *n, int *m, double *alpha,
