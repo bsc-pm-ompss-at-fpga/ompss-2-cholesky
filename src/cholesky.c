@@ -145,10 +145,10 @@ static int check_factorization(int N, type_t *A1, type_t *A2, int LDA, char uplo
    char NORM = 'I', ALL = 'A', UP = 'U', LO = 'L', TR = 'T', NU = 'N', RI = 'R';
    type_t alpha = 1.0;
    type_t const b = 2.0;
-#ifdef USE_FLOAT
-   const int t = 24;
-#else
+#ifdef USE_DOUBLE
    const int t = 53;
+#else
+   const int t = 24;
 #endif
    type_t const eps = pow_di( b, -t );
 
