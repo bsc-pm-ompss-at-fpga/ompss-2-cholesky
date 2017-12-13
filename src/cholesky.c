@@ -38,9 +38,41 @@
 #pragma omp task inout([ts]A)
 void omp_potrf(type_t (*A)[ts])
 {
+#if 0
    static const char L = 'L';
    int info;
    potrf(&L, &ts, (type_t *)A, &ts, &info);
+#else
+   type_t diag[ts];
+   long i,j,k;
+   for (int j = 0; j < ts; ++j) {
+      diag[j] = A[j][j];
+   }
+   for (int j = 0; j < ts; ++j) {
+      for (int k = 0; k < j; ++k) {
+         diag[j] -= A[k][j]*A[k][j];
+      }
+      //diag[j] = sqrt(diag[j]);
+      type_t l = 0, h = diag[j], m;
+      for (int i = 0; i < 256/*max_iters_to_converge*/; ++i) {
+         m = (l+h)/2;
+         if (m*m == diag[j]) break;
+         else if (m*m > diag[j]) h = m;
+         else l = m;
+      }
+      diag[j] = m;
+
+      for (int i = j + 1; i < ts; ++i) {
+         for (int k = 0; k < j; ++k) {
+            A[j][i] -= A[k][i]*A[k][j];
+         }
+         A[j][i] /= diag[j];
+      }
+   }
+   for (int j = 0; j < ts; ++j) {
+      A[j][j] = diag[j];
+   }
+#endif
 }
 
 #pragma omp target device(fpga) onto(2)
