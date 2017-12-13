@@ -43,34 +43,26 @@ void omp_potrf(type_t (*A)[ts])
    int info;
    potrf(&L, &ts, (type_t *)A, &ts, &info);
 #else
-   type_t diag[ts];
-   long i,j,k;
-   for (int j = 0; j < ts; ++j) {
-      diag[j] = A[j][j];
-   }
    for (int j = 0; j < ts; ++j) {
       for (int k = 0; k < j; ++k) {
-         diag[j] -= A[k][j]*A[k][j];
+         A[j][j] -= A[k][j]*A[k][j];
       }
-      //diag[j] = sqrt(diag[j]);
-      type_t l = 0, h = diag[j], m;
+      //A[j][j] = sqrt(A[j][j]);
+      type_t l = 0, h = A[j][j], m;
       for (int i = 0; i < 256/*max_iters_to_converge*/; ++i) {
          m = (l+h)/2;
-         if (m*m == diag[j]) break;
-         else if (m*m > diag[j]) h = m;
+         if (m*m == A[j][j]) break;
+         else if (m*m > A[j][j]) h = m;
          else l = m;
       }
-      diag[j] = m;
+      A[j][j] = m;
 
       for (int i = j + 1; i < ts; ++i) {
          for (int k = 0; k < j; ++k) {
             A[j][i] -= A[k][i]*A[k][j];
          }
-         A[j][i] /= diag[j];
+         A[j][i] /= A[j][j];
       }
-   }
-   for (int j = 0; j < ts; ++j) {
-      A[j][j] = diag[j];
    }
 #endif
 }
