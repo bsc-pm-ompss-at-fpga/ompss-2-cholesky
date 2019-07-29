@@ -38,12 +38,9 @@
 //NOTE: Cannot throw the error as Vivado HLS will not compile
 //# error No backend library found. See README for more information
 #endif
-
-const int ts = 32; // tile size
+#include "cholesky.fpga.h"
 
 #if defined(USE_DOUBLE)
-#  define type_t     double
-#  define ELEM_T_STR "double"
 #  define gemm       cblas_dgemm
 #  define trsm       cblas_dtrsm
 #  define trmm       cblas_dtrmm
@@ -60,8 +57,6 @@ const int ts = 32; // tile size
 #    define larnv    LAPACK_dlarnv
 #  endif
 #else
-#  define type_t     float
-#  define ELEM_T_STR "float"
 #  define gemm       cblas_sgemm
 #  define trsm       cblas_strsm
 #  define trmm       cblas_strmm

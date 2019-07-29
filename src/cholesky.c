@@ -33,130 +33,133 @@
 #include <assert.h>
 
 #include "cholesky.h"
+#include "cholesky.fpga.h"
 
-#pragma omp target device(smp)
-#pragma omp task inout([ts]A)
-void omp_potrf(type_t (*A)[ts])
+#pragma omp target device(fpga) copy_inout([ts*ts]A)
+#pragma omp task
+void omp_potrf(type_t *A)
 {
-#if 0
-   static const char L = 'L';
-   int info;
-   potrf(&L, &ts, (type_t *)A, &ts, &info);
-#else
+   #pragma HLS INLINE // off
+   #pragma HLS array_partition variable=A block factor=ts
    for (int j = 0; j < ts; ++j) {
       for (int k = 0; k < j; ++k) {
-         A[j][j] -= A[k][j]*A[k][j];
+         A[j*ts + j] -= A[k*ts + j]*A[k*ts + j];
       }
       //A[j][j] = sqrt(A[j][j]);
-      type_t l = 0, h = A[j][j], m;
+      const type_t A_jj = A[j*ts + j];
+      type_t l = 0, h = A_jj, m;
       for (int i = 0; i < 256/*max_iters_to_converge*/; ++i) {
          m = (l+h)/2;
-         if (m*m == A[j][j]) break;
-         else if (m*m > A[j][j]) h = m;
+         if (m*m == A_jj) break;
+         else if (m*m > A_jj) h = m;
          else l = m;
       }
-      A[j][j] = m;
+      A[j*ts + j] = m;
 
       for (int i = j + 1; i < ts; ++i) {
+         #pragma HLS pipeline II=1
+         type_t tmp = A[j*ts + i];
          for (int k = 0; k < j; ++k) {
-            A[j][i] -= A[k][i]*A[k][j];
+            tmp -= A[k*ts + i]*A[k*ts + j];
          }
-         A[j][i] /= A[j][j];
+         A[j*ts + i] = tmp/A[j*ts + j];
       }
    }
-#endif
 }
 
-#pragma omp target device(fpga) onto(2)
-#pragma omp task in([ts]A) inout([ts]B)
-void omp_trsm(type_t (*A)[ts], type_t (*B)[ts])
+#pragma omp target device(fpga) copy_in([ts*ts]A) copy_inout([ts*ts]B)
+#pragma omp task
+void omp_trsm(const type_t *A, type_t *B)
 {
-#if 0
-   trsm(CBLAS_MAT_ORDER, CBLAS_RI, CBLAS_LO, CBLAS_T, CBLAS_NU,
-      ts, ts, 1.0, (type_t *)A, ts, (type_t *)B, ts);
-#else
    type_t tmp_row[ts];
+   #pragma HLS INLINE // off
+   #pragma HLS array_partition variable=A cyclic factor=4
+   #pragma HLS array_partition variable=B cyclic factor=ts
+   #pragma HLS array_partition variable=tmp_row cyclic factor=ts/2
+
    for (int k = 0; k < ts; ++k) {
-      type_t temp = 1. / A[k][k];
+      type_t temp = 1. / A[k*ts + k];
       for (int i__ = 0; i__ < ts; ++i__) {
-         B[k][i__] = tmp_row[i__] = temp * B[k][i__];
+         B[k*ts + i__] = tmp_row[i__] = temp * B[k*ts + i__];
       }
       for (int j = k + 1 ; j < ts; ++j) {
-         temp = A[k][j];
+         #pragma HLS pipeline II=1
+         temp = A[k*ts + j];
          for (int i__ = 0; i__ < ts; ++i__) {
-            B[j][i__] -= temp * tmp_row[i__];
+            B[j*ts + i__] -= temp * tmp_row[i__];
          }
       }
    }
-#endif
 }
 
-#pragma omp target device(fpga) onto(1)
-#pragma omp task in([ts]A) inout([ts]B)
-void omp_syrk(type_t (*A)[ts], type_t (*B)[ts])
+#pragma omp target device(fpga) copy_in([ts*ts]A) copy_inout([ts*ts]B)
+#pragma omp task
+void omp_syrk(const type_t *A, type_t *B)
 {
-#if 0
-   syrk(CBLAS_MAT_ORDER, CBLAS_LO, CBLAS_NT,
-      ts, ts, -1.0, (type_t *)A, ts, 1.0, (type_t *)B, ts);
-#else
+   #pragma HLS INLINE // off
+   #pragma HLS array_partition variable=A block factor=ts
+   #pragma HLS array_partition variable=B cyclic factor=4
+
    for (int j = 0; j < ts; ++j) {
       for (int i__ = j; i__ < ts; ++i__) {
-         type_t temp = B[j][i__];
+         #pragma HLS pipeline II=1
+         type_t temp = B[j*ts + i__];
          for (int l = 0; l < ts; ++l) {
-            temp += -A[l][j] * A[l][i__];
+            temp += -A[l*ts + j] * A[l*ts + i__];
          }
-         B[j][i__] = temp;
+         B[j*ts + i__] = temp;
       }
    }
-#endif
 }
 
-#pragma omp target device(fpga) onto(0)
-#pragma omp task in([ts]A, [ts]B) inout([ts]C)
-void omp_gemm(type_t (*A)[ts], type_t (*B)[ts], type_t (*C)[ts])
+#pragma omp target device(fpga) num_instances(3) copy_in([ts*ts]A, [ts*ts]B) copy_inout([ts*ts]C)
+#pragma omp task
+void omp_gemm(const type_t *A, const type_t *B, type_t *C)
 {
-#if 0
-   gemm(CBLAS_MAT_ORDER, CBLAS_NT, CBLAS_T,
-      ts, ts, ts, -1.0, (type_t *)A, ts, (type_t *)B, ts, 1.0, (type_t *)C, ts);
-#else
-   for (int j = 0; j < ts; ++j) {
-      for (int i__ = 0; i__ < ts; ++i__) {
-         type_t temp = C[j][i__];
-         for (int l = 0; l < ts; ++l) {
-            temp += -B[l][j] * A[l][i__];
+   #pragma HLS INLINE // off
+   #pragma HLS array_partition variable=A cyclic factor=4
+   #pragma HLS array_partition variable=B cyclic factor=ts/2
+   #pragma HLS array_partition variable=C cyclic factor=ts
+
+   for (int k = 0; k < ts; ++k) {
+      for (int i = 0; i < ts; ++i) {
+         #pragma HLS pipeline II=1
+         for (int j = 0; j < ts; ++j) {
+            C[i*ts + j] += A[i*ts + k] * -B[k*ts + j];
          }
-         C[j][i__] = temp;
       }
    }
-#endif
 }
 
-void cholesky_blocked(const int nt, type_t* Ah[nt][nt])
+#pragma omp target device(fpga) copy_inout([nt*nt*ts*ts]A)
+#pragma omp task
+void cholesky_blocked(const int nt, type_t* A)
 {
    for (int k = 0; k < nt; k++) {
 
       // Diagonal Block factorization
-      omp_potrf( (type_t (*)[ts])Ah[k][k] );
+      omp_potrf( A + (k*nt + k)*ts*ts );
+      #pragma omp taskwait
 
       // Triangular systems
       for (int i = k + 1; i < nt; i++) {
-         omp_trsm( (type_t (*)[ts])Ah[k][k],
-                   (type_t (*)[ts])Ah[k][i] );
+         omp_trsm( A + (k*nt + k)*ts*ts,
+                   A + (k*nt + i)*ts*ts );
       }
+      #pragma omp taskwait
 
       // Update trailing matrix
       for (int i = k + 1; i < nt; i++) {
          for (int j = k + 1; j < i; j++) {
-            omp_gemm( (type_t (*)[ts])Ah[k][i],
-                      (type_t (*)[ts])Ah[k][j],
-                      (type_t (*)[ts])Ah[j][i] );
+            omp_gemm( A + (k*nt + i)*ts*ts,
+                      A + (k*nt + j)*ts*ts,
+                      A + (j*nt + i)*ts*ts );
          }
-         omp_syrk( (type_t (*)[ts])Ah[k][i],
-                   (type_t (*)[ts])Ah[i][i] );
+         omp_syrk( A + (k*nt + i)*ts*ts,
+                   A + (i*nt + i)*ts*ts );
+         #pragma omp taskwait
       }
-
    }
-   #pragma omp taskwait
 }
 
 // Robust Check the factorization of the matrix A2
@@ -292,16 +295,18 @@ int main(int argc, char* argv[])
 
    // Allocate blocked matrix
    type_t *Ah[nt][nt];
+   type_t *Ab;
+   const size_t s = ts * ts * sizeof(type_t);
+#ifdef USE_DMA_MEM
+   Ab = (type_t *)nanos_fpga_alloc_dma_mem(s*nt*nt);
+#else
+   Ab = malloc(s*nt*nt);
+#endif
+   assert(Ab != NULL);
 
-   size_t s = ts * ts * sizeof(type_t);
    for (int i = 0; i < nt; i++) {
       for (int j = 0; j < nt; j++) {
-#ifdef USE_DMA_MEM
-         Ah[i][j] = nanos_fpga_alloc_dma_mem(s);
-#else
-         Ah[i][j] = malloc(s);
-#endif
-         assert(Ah[i][j] != NULL);
+         Ah[i][j] = Ab + (i*nt + j)*ts*ts;
       }
    }
 
@@ -312,7 +317,7 @@ int main(int argc, char* argv[])
    convert_to_blocks(nt, n, (type_t(*)[n]) matrix, Ah);
 
    const float secs1 = get_time();
-   cholesky_blocked(nt, (type_t* (*)[nt]) Ah);
+   cholesky_blocked(nt, Ab);
 
    const float secs2 = get_time();
    convert_to_linear(nt, n, Ah, (type_t (*)[n]) matrix);
@@ -339,16 +344,11 @@ int main(int argc, char* argv[])
    printf( "================================================== \n" );
 
    // Free blocked matrix
-   for (int i = 0; i < nt; i++) {
-      for (int j = 0; j < nt; j++) {
-         assert(Ah[i][j] != NULL);
 #ifdef USE_DMA_MEM
-         nanos_fpga_free_dma_mem(Ah[i][j]);
+   nanos_fpga_free_dma_mem(Ab);
 #else
-         free(Ah[i][j]);
+   free(Ab);
 #endif
-      }
-   }
 
    // Free matrix
    free(matrix);
