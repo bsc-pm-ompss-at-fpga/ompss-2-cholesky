@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017, BSC (Barcelona Supercomputing Center)
+* Copyright (c) 2020, BSC (Barcelona Supercomputing Center)
 * All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
@@ -35,103 +35,148 @@
 #include "cholesky.h"
 #include "cholesky.fpga.h"
 
-#pragma omp target device(fpga) copy_inout([ts*ts]A)
-#pragma omp task
+#if defined(OPENBLAS_IMPL) || defined(POTRF_SMP)
+#pragma omp target device(smp) copy_deps
+#else
+#pragma omp target device(fpga) copy_deps
+#endif
+#pragma omp task inout([ts*ts]A)
 void omp_potrf(type_t *A)
 {
-   #pragma HLS INLINE // off
-   #pragma HLS array_partition variable=A block factor=ts
+#if defined(OPENBLAS_IMPL) || defined(POTRF_SMP)
+   static const char L = 'L';
+   int info;
+   potrf(&L, &ts, A, &ts, &info);
+#else
+   #pragma HLS inline
+   #pragma HLS array_partition variable=A cyclic factor=FPGA_PWIDTH/64
    for (int j = 0; j < ts; ++j) {
+      type_t tmp = A[j*ts + j];
       for (int k = 0; k < j; ++k) {
-         A[j*ts + j] -= A[k*ts + j]*A[k*ts + j];
+         #pragma HLS pipeline II=1
+         type_t Akj = A[k*ts + j];
+         tmp -= Akj*Akj;
       }
-      //A[j][j] = sqrt(A[j][j]);
-      const type_t A_jj = A[j*ts + j];
-      type_t l = 0, h = A_jj, m;
-      for (int i = 0; i < 256/*max_iters_to_converge*/; ++i) {
-         m = (l+h)/2;
-         if (m*m == A_jj) break;
-         else if (m*m > A_jj) h = m;
-         else l = m;
-      }
-      A[j*ts + j] = m;
+
+      A[j*ts + j] = sqrtf(tmp);
 
       for (int i = j + 1; i < ts; ++i) {
-         #pragma HLS pipeline II=1
          type_t tmp = A[j*ts + i];
          for (int k = 0; k < j; ++k) {
+            #pragma HLS pipeline II=1
             tmp -= A[k*ts + i]*A[k*ts + j];
          }
          A[j*ts + i] = tmp/A[j*ts + j];
       }
    }
+#endif
 }
 
-#pragma omp target device(fpga) copy_in([ts*ts]A) copy_inout([ts*ts]B)
-#pragma omp task
+#ifdef OPENBLAS_IMPL
+#pragma omp target device(smp) copy_deps
+#else
+#pragma omp target device(fpga) /*trsm*/ num_instances(1) copy_deps
+#endif
+#pragma omp task in([ts*ts]A) inout([ts*ts]B)
 void omp_trsm(const type_t *A, type_t *B)
 {
+#ifdef OPENBLAS_IMPL
+   trsm(CBLAS_MAT_ORDER, CBLAS_RI, CBLAS_LO, CBLAS_T, CBLAS_NU,
+      ts, ts, 1.0, A, ts, B, ts);
+#else
+   #pragma HLS inline
+   #pragma HLS array_partition variable=A cyclic factor=FPGA_PWIDTH/64
+   #pragma HLS array_partition variable=B cyclic factor=ts/FPGA_OTHER_II
+   #pragma HLS array_partition variable=tmp_row cyclic factor=ts/(2*FPGA_OTHER_II)
    type_t tmp_row[ts];
-   #pragma HLS INLINE // off
-   #pragma HLS array_partition variable=A cyclic factor=4
-   #pragma HLS array_partition variable=B cyclic factor=ts
-   #pragma HLS array_partition variable=tmp_row cyclic factor=ts/2
 
    for (int k = 0; k < ts; ++k) {
       type_t temp = 1. / A[k*ts + k];
-      for (int i__ = 0; i__ < ts; ++i__) {
-         B[k*ts + i__] = tmp_row[i__] = temp * B[k*ts + i__];
-      }
-      for (int j = k + 1 ; j < ts; ++j) {
+      for (int i = 0; i < ts; ++i) {
+         #pragma HLS unroll factor=ts/FPGA_OTHER_II
          #pragma HLS pipeline II=1
-         temp = A[k*ts + j];
-         for (int i__ = 0; i__ < ts; ++i__) {
-            B[j*ts + i__] -= temp * tmp_row[i__];
+         //Sometimes Vivado HLS doesn't achieve II=1 because it detects
+         //some false dependence on B, this fixes the issue. Same for the other loop
+         #pragma HLS DEPENDENCE variable=B inter false
+         B[k*ts + i] = tmp_row[i] = temp * B[k*ts + i];
+      }
+
+      for (int j = k + 1; j < ts; ++j) {
+         #pragma HLS pipeline II=FPGA_OTHER_II
+         #pragma HLS DEPENDENCE variable=B inter false
+         for (int i = 0; i < ts; ++i) {
+            B[j*ts + i] -= A[k*ts + j] * tmp_row[i];
          }
       }
    }
+#endif
 }
 
-#pragma omp target device(fpga) copy_in([ts*ts]A) copy_inout([ts*ts]B)
-#pragma omp task
+#ifdef OPENBLAS_IMPL
+#pragma omp target device(smp) copy_deps
+#else
+#pragma omp target device(fpga) /*syrk*/ num_instances(1) copy_deps
+#endif
+#pragma omp task in([ts*ts]A) inout([ts*ts]B)
 void omp_syrk(const type_t *A, type_t *B)
 {
-   #pragma HLS INLINE // off
-   #pragma HLS array_partition variable=A block factor=ts
-   #pragma HLS array_partition variable=B cyclic factor=4
-
-   for (int j = 0; j < ts; ++j) {
-      for (int i__ = j; i__ < ts; ++i__) {
-         #pragma HLS pipeline II=1
-         type_t temp = B[j*ts + i__];
-         for (int l = 0; l < ts; ++l) {
-            temp += -A[l*ts + j] * A[l*ts + i__];
-         }
-         B[j*ts + i__] = temp;
-      }
-   }
-}
-
-#pragma omp target device(fpga) num_instances(3) copy_in([ts*ts]A, [ts*ts]B) copy_inout([ts*ts]C)
-#pragma omp task
-void omp_gemm(const type_t *A, const type_t *B, type_t *C)
-{
-   #pragma HLS INLINE // off
-   #pragma HLS array_partition variable=A cyclic factor=4
-   #pragma HLS array_partition variable=B cyclic factor=ts/2
-   #pragma HLS array_partition variable=C cyclic factor=ts
+#ifdef OPENBLAS_IMPL
+   syrk(CBLAS_MAT_ORDER, CBLAS_LO, CBLAS_NT,
+      ts, ts, -1.0, A, ts, 1.0, B, ts);
+#else
+   #pragma HLS inline
+   #pragma HLS array_partition variable=A cyclic factor=ts/FPGA_OTHER_II
+   #pragma HLS array_partition variable=B cyclic factor=ts/FPGA_OTHER_II
 
    for (int k = 0; k < ts; ++k) {
       for (int i = 0; i < ts; ++i) {
-         #pragma HLS pipeline II=1
+         #pragma HLS pipeline II=FPGA_OTHER_II
          for (int j = 0; j < ts; ++j) {
-            C[i*ts + j] += A[i*ts + k] * -B[k*ts + j];
+            //NOTE: Instead of reduce the 'i' iterations, multiply by 0
+            B[i*ts + j] += -A[k*ts + i] * (j < i ? 0 : A[k*ts + j]);
          }
       }
    }
+#endif
 }
 
+#ifdef OPENBLAS_IMPL
+#pragma omp target device(smp) copy_deps
+#else
+#pragma omp target device(fpga) /*gemm*/ num_instances(1) copy_deps
+#endif
+#pragma omp task in([ts*ts]A, [ts*ts]B) inout([ts*ts]C)
+void omp_gemm(const type_t *A, const type_t *B, type_t *C)
+{
+#ifdef OPENBLAS_IMPL
+   gemm(CBLAS_MAT_ORDER, CBLAS_NT, CBLAS_T,
+      ts, ts, ts, -1.0, A, ts, B, ts, 1.0, C, ts);
+#else
+   #pragma HLS inline
+   #pragma HLS array_partition variable=A cyclic factor=ts/(2*FPGA_GEMM_II)
+   #pragma HLS array_partition variable=B cyclic factor=FPGA_PWIDTH/64
+   #pragma HLS array_partition variable=C cyclic factor=ts/FPGA_GEMM_II
+   #ifdef USE_URAM
+   #pragma HLS resource variable=A core=XPM_MEMORY uram
+   #pragma HLS resource variable=B core=XPM_MEMORY uram
+   #endif
+
+   for (int k = 0; k < ts; ++k) {
+      for (int i = 0; i < ts; ++i) {
+         #pragma HLS pipeline II=FPGA_GEMM_II
+         for (int j = 0; j < ts; ++j) {
+            C[i*ts + j] += A[k*ts + j] * -B[k*ts + i];
+         }
+      }
+   }
+#endif
+}
+
+#ifdef OPENBLAS_IMPL
+#pragma omp target device(smp) copy_deps
+#else
 #pragma omp target device(fpga) copy_inout([nt*nt*ts*ts]A)
+#endif
 #pragma omp task
 void cholesky_blocked(const int nt, type_t* A)
 {
@@ -139,14 +184,18 @@ void cholesky_blocked(const int nt, type_t* A)
 
       // Diagonal Block factorization
       omp_potrf( A + (k*nt + k)*ts*ts );
-      #pragma omp taskwait
 
       // Triangular systems
-      for (int i = k + 1; i < nt; i++) {
+      #ifdef OPENBLAS_IMPL
+      for (int i = k+1; i < nt; i++) {
+      #else
+      // Create in inverse order because Picos wakes up ready
+      // chain tasks in that order
+      for (int i = nt-1; i >= k+1; i--) {
+      #endif
          omp_trsm( A + (k*nt + k)*ts*ts,
                    A + (k*nt + i)*ts*ts );
       }
-      #pragma omp taskwait
 
       // Update trailing matrix
       for (int i = k + 1; i < nt; i++) {
@@ -157,9 +206,9 @@ void cholesky_blocked(const int nt, type_t* A)
          }
          omp_syrk( A + (k*nt + i)*ts*ts,
                    A + (i*nt + i)*ts*ts );
-         #pragma omp taskwait
       }
    }
+   #pragma omp taskwait
 }
 
 // Robust Check the factorization of the matrix A2
@@ -282,11 +331,13 @@ int main(int argc, char* argv[])
    type_t * const matrix = (type_t *) malloc(n * n * sizeof(type_t));
    assert(matrix != NULL);
 
+   double tIniStart = wall_time();
+
    // Init matrix
    initialize_matrix(n, matrix);
 
    type_t * original_matrix = NULL;
-   if ( check ) {
+   if ( check == 1 ) {
       // Allocate matrix
       original_matrix = (type_t *) malloc(n * n * sizeof(type_t));
       assert(original_matrix != NULL);
@@ -310,28 +361,54 @@ int main(int argc, char* argv[])
       }
    }
 
+   const double tEndStart = wall_time();
+
 #ifdef VERBOSE
    printf ("Executing ...\n");
 #endif
 
    convert_to_blocks(nt, n, (type_t(*)[n]) matrix, Ah);
 
-   const float secs1 = get_time();
+   const double tIniWarm = wall_time();
+
+   //Warm up execution
+   if (check == 2) {
+       cholesky_blocked(nt, Ab);
+       #pragma omp taskwait noflush
+   }
+
+   const double tEndWarm = wall_time();
+   const double tIniExec = tEndWarm;
+
+   //Performance execution
    cholesky_blocked(nt, Ab);
 
-   const float secs2 = get_time();
+   #pragma omp taskwait noflush
+   const double tEndExec = wall_time();
+   const double tIniFlush = tEndExec;
+
+   //The following TW will copy out the data moved to FPGA devices
+   #pragma omp taskwait
+
+   const double tEndFlush = wall_time();
+   const double tIniToLinear = tEndFlush;
+
    convert_to_linear(nt, n, Ah, (type_t (*)[n]) matrix);
 
-   if ( check ) {
+   const double tEndToLinear = wall_time();
+   const double tIniCheck = tEndToLinear;
+
+   if ( check == 1 ) {
       const char uplo = 'L';
-      if ( check_factorization(n, original_matrix, matrix, n, uplo) ) check++;
+      if ( check_factorization(n, original_matrix, matrix, n, uplo) ) check = 10;
       free(original_matrix);
    }
 
-   float time = secs2 - secs1;
-   float gflops = (((1.0 / 3.0) * n * n * n) / (time));
+   const double tEndCheck = wall_time();
 
    // Print results
+   float gflops = (float)n/1e3;
+   gflops = (gflops*gflops*gflops/3.f)/(tEndExec - tIniExec);
    printf( "==================== RESULTS ===================== \n" );
    printf( "  Benchmark: %s (%s)\n", "Cholesky", "OmpSs" );
    printf( "  Elements type: %s\n", ELEM_T_STR );
@@ -339,8 +416,13 @@ int main(int argc, char* argv[])
    printf( "  Matrix size:           %dx%d\n", n, n);
    printf( "  Block size:            %dx%d\n", ts, ts);
 #endif
-   printf( "  Performance (gflops):  %f\n", gflops);
-   printf( "  Execution time (secs): %f\n", time );
+   printf( "  Init. time (secs):     %f\n", tEndStart    - tIniStart );
+   printf( "  Warm up time (secs):   %f\n", tEndWarm     - tIniWarm );
+   printf( "  Execution time (secs): %f\n", tEndExec     - tIniExec );
+   printf( "  Flush time (secs):     %f\n", tEndFlush    - tIniFlush );
+   printf( "  Convert linear (secs): %f\n", tEndToLinear - tIniToLinear );
+   printf( "  Checking time (secs):  %f\n", tEndCheck    - tIniCheck );
+   printf( "  Performance (GFLOPS):  %f\n", gflops );
    printf( "================================================== \n" );
 
    // Free blocked matrix
@@ -350,8 +432,44 @@ int main(int argc, char* argv[])
    free(Ab);
 #endif
 
+   //Create the JSON result file
+   FILE *res_file = fopen("test_result.json", "w+");
+   if (res_file == NULL) {
+      printf( "Cannot open 'test_result.json' file\n" );
+      exit(1);
+   }
+   fprintf(res_file,
+      "{ \
+         \"benchmark\": \"%s\", \
+         \"version\": \"%usyrk %ugemm %utrsm memport_128 noflush\", \
+         \"hwruntime\": \"%s\", \
+         \"pm\": \"%s_%s\", \
+         \"datatype\": \"%s\", \
+         \"argv\": \"%d %d %d\", \
+         \"exectime\": \"%f\", \
+         \"performance\": \"%f\", \
+         \"note\": \"init %f, warm %f, exec %f, flush %f, to_linear %f, check %f\" \
+      }",
+      "cholesky",
+      SYRK_NUM_ACCS, GEMM_NUM_ACCS, TRSM_NUM_ACCS,
+      FPGA_HWRUNTIME,
+      "ompss",
+      RUNTIME_MODE,
+      ELEM_T_STR,
+      n, ts, check,
+      tEndExec - tIniExec,
+      gflops,
+      tEndStart - tIniStart,
+      tEndWarm - tIniWarm,
+      tEndExec - tIniExec,
+      tEndFlush - tIniFlush,
+      tEndToLinear - tIniToLinear,
+      tEndCheck - tIniCheck
+   );
+   fclose(res_file);
+
    // Free matrix
    free(matrix);
 
-   return 0;
+   return check == 10 ? 1 : 0;
 }

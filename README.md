@@ -1,9 +1,10 @@
 # Cholesky
 
 **Name**: Cholesky Factorization Kernel  
-**Contact Person**: PM Group, pm-tools@bsc.es  
+**Contact Person**: OmpSs@FPGA Team, ompss-fpga-support@bsc.es  
 **License Agreement**: GPL  
-**Platform**: OmpSs  
+**Platform**: OmpSs@FPGA
+
 
 ### Description
 This application performs a cholesky decomposition/factorization over a square matrix.
@@ -16,13 +17,13 @@ The task implementation requires support for one external library that implement
 ### Build instructions
 Clone the repository:
 ```
-git clone https://pm.bsc.es/gitlab/applications/ompss/cholesky.git
+git clone https://pm.bsc.es/gitlab/ompss-at-fpga/benchmarks/cholesky.git
 cd cholesky
 ```
 
 Build the application binaries:
 ```
-make
+make BOARD=zedboard CROSS_COMPILE=arm-linux-gnueabihf-
 ```
 ##### Build variables
 You can change the build process defining or modifying some environment variables.
@@ -41,6 +42,17 @@ The supported ones are:
   - `OPENBLAS_DIR`. Installation directory of OpenBLAS library. The default value is: `$OPENBLAS_HOME`.
     - `OPENBLAS_INC_DIR`. Installation directory of includes for OpenBLAS library. The default value is: `$OPENBLAS_DIR/include`.
     - `OPENBLAS_LIB_DIR`. Installation directory of OS libraries for OpenBLAS library. The default value is: `$OPENBLAS_DIR/lib`.
+  - `BOARD`. Board option used when generating the bitstreams.
+  - `FPGA_HWRUNTIME`. Hardware Runtime used when generating the bitstreams. The default value is: `POM`.
+  - `FPGA_CLOCK`. Target frequency of FPGA accelerators in the bitstreams. The default value is: `200`.
+  - `FPGA_MEMORY_PORT_WIDTH`. Bit-width of accelerators memory port to access main memory. The default value is: `128`.
+  - `BLOCK_SIZE`. Dimension of matrix blocks that FPGA accelerators deal with. The default value is: `32`.
+  - `SYRK_NUM_ACCS`. Number of FPGA accelerators for syrk task. The default value is: `1`.
+  - `GEMM_NUM_ACCS`. Number of FPGA accelerators for gemm task. The default value is: `1`.
+  - `TRSM_NUM_ACCS`. Number of FPGA accelerators for trsm task. The default value is: `1`.
+  - `FPGA_GEMM_II`. Initiation interval, in cycles, for gemm middle loop. The default value is: `1`.
+  - `FPGA_OTHER_II`. Initiation interval, in cycles, for syrk and trsm middle loop. The default value is: `1`.
+  - `POTRF_SMP`. Use SMP arch for potrf tasks. The default value is: `1`.
 
 Note that in order to compile the application either `MKL_DIR` or `OPENBLAS_DIR` (or the derivate variables) must point to a valid installation.
 

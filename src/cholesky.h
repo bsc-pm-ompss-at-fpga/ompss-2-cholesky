@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017, BSC (Barcelona Supercomputing Center)
+* Copyright (c) 2020, BSC (Barcelona Supercomputing Center)
 * All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
@@ -26,7 +26,7 @@
 */
 
 #include <sys/time.h>
-#include <sys/times.h>
+#include <time.h>
 #include <math.h>
 #if USE_MKL
 # include <mkl_lapacke.h>
@@ -38,9 +38,43 @@
 //NOTE: Cannot throw the error as Vivado HLS will not compile
 //# error No backend library found. See README for more information
 #endif
-#include "cholesky.fpga.h"
+
+#ifndef BLOCK_SIZE
+#  error BLOCK_SIZE not defined
+#endif
+#ifndef FPGA_MEMORY_PORT_WIDTH
+#  error FPGA_MEMORY_PORT_WIDTH variable not defined
+#endif
+#ifndef SYRK_NUM_ACCS
+#  error SYRK_NUM_ACCS variable not defined
+#endif
+#ifndef GEMM_NUM_ACCS
+#  error GEMM_NUM_ACCS variable not defined
+#endif
+#ifndef TRSM_NUM_ACCS
+#  error TRSM_NUM_ACCS variable not defined
+#endif
+#ifndef FPGA_OTHER_LOOP_II
+#  error FPGA_OTHER_LOOP_II variable not defined
+#endif
+#ifndef FPGA_GEMM_LOOP_II
+#  error FPGA_GEMM_LOOP_II variable not defined
+#endif
+
+#pragma omp target device(fpga)
+const unsigned int FPGA_GEMM_II = FPGA_GEMM_LOOP_II;
+#pragma omp target device(fpga)
+const unsigned int FPGA_OTHER_II = FPGA_OTHER_LOOP_II;
+const int ts = BLOCK_SIZE; // tile size
+#pragma omp target device(fpga)
+const unsigned int FPGA_PWIDTH = FPGA_MEMORY_PORT_WIDTH;
+const unsigned int SYRK_NUMACCS = SYRK_NUM_ACCS;
+const unsigned int GEMM_NUMACCS = GEMM_NUM_ACCS;
+const unsigned int TRSM_NUMACCS = TRSM_NUM_ACCS;
 
 #if defined(USE_DOUBLE)
+#  define type_t     double
+#  define ELEM_T_STR "double"
 #  define gemm       cblas_dgemm
 #  define trsm       cblas_dtrsm
 #  define trmm       cblas_dtrmm
@@ -57,6 +91,8 @@
 #    define larnv    LAPACK_dlarnv
 #  endif
 #else
+#  define type_t     float
+#  define ELEM_T_STR "float"
 #  define gemm       cblas_sgemm
 #  define trsm       cblas_strsm
 #  define trmm       cblas_strmm
@@ -82,26 +118,10 @@
 #define CBLAS_RI          CblasRight
 #define CBLAS_NU          CblasNonUnit
 
-float get_time()
-{
-   static double gtod_ref_time_sec = 0.0;
-
-   struct timeval tv;
-   gettimeofday(&tv, NULL);
-
-   // If this is the first invocation of through dclock(), then initialize the
-   // "reference time" global variable to the seconds field of the tv struct.
-   if (gtod_ref_time_sec == 0.0)
-      gtod_ref_time_sec = (double) tv.tv_sec;
-
-   // Normalize the seconds field of the tv struct so that it is relative to the
-   // "reference time" that was recorded during the first invocation of dclock().
-   const double norm_sec = (double) tv.tv_sec - gtod_ref_time_sec;
-
-   // Compute the number of seconds since the reference time.
-   const double t = norm_sec + tv.tv_usec * 1.0e-6;
-
-   return (float) t;
+double wall_time () {
+   struct timespec ts;
+   clock_gettime(CLOCK_MONOTONIC,&ts);
+   return (double) (ts.tv_sec) + (double) ts.tv_nsec * 1.0e-9;
 }
 
 static type_t pow_di(type_t x, int n)
