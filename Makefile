@@ -70,7 +70,7 @@ endif
 ifeq ($(FPGA_HWRUNTIME),som)
 	## Ignore the deps when spawning tasks inside the FPGA (only with SOM)
 	FPGA_LINKER_FLAGS_ += --variable=fpga_ignore_deps_task_spawn:1
-elif ($(FPGA_HWRUNTIME),pom)
+else ifeq ($(FPGA_HWRUNTIME),pom)
 	FPGA_LINKER_FLAGS_ += --Wf,--picos_tm_size=256,--picos_dm_size=645,--picos_vm_size=775,--picos_max_args_per_task=3,--picos_max_deps_per_task=3,--picos_max_copies_per_task=3
 endif
 
