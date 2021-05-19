@@ -13,6 +13,8 @@ RES_FILE=$(pwd -P)/resources_results.json
 
 if [ "$NODE_NAME" == "hca-ikergune" ]; then
   module load openblas/0.3.6_arm64
+  #FIXME: Ensure that we are using the arm64 compilers as openblas lib targets this arch
+  export CROSS_COMPILE='aarch64-linux-gnu-'
 elif [ "$NODE_NAME" == "llebeig" ]; then
   module load openblas/0.3.13/sequential
 elif [ "$NODE_NAME" == "xaloc" ]; then
