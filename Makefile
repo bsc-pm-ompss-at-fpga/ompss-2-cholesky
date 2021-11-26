@@ -63,6 +63,14 @@ ifdef INTERCONNECT_REGSLICE
 	FPGA_LINKER_FLAGS_ += --Wf,--interconnect_regslice,$(INTERCONNECT_REGSLICE)
 endif
 
+ifdef MEMORY_INTERLEAVING_STRIDE
+	FPGA_LINKER_FLAGS_ += --Wf,--memory_interleaving_stride=$(MEMORY_INTERLEAVING_STRIDE)
+endif
+
+ifdef SIMPLIFY_INTERCONNECTION
+	FPGA_LINKER_FLAGS_ += --Wf,--simplify_interconnection
+endif
+
 ifdef USE_URAM
 	CFLAGS += -DUSE_URAM
 endif
