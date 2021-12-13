@@ -18,7 +18,9 @@ if [ "$NODE_NAME" == "hca-ikergune" ]; then
 elif [ "$NODE_NAME" == "llebeig" ]; then
   module load openblas/0.3.13/sequential
 elif [ "$NODE_NAME" == "xaloc" ]; then
-  module load openblas/0.3.10/sequential
+  module load openblas/0.3.12/sequential
+elif [ "$NODE_NAME" == "quar" ]; then
+  module load openblas/0.3.17/sequential
 else
   echo "NODE_NAME ('$NODE_NAME') not supported. Cannot load OpenBLAS."
   exit 1
