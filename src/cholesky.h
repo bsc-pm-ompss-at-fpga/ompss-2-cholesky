@@ -61,12 +61,9 @@
 #  error FPGA_GEMM_LOOP_II variable not defined
 #endif
 
-#pragma omp target device(fpga)
 const unsigned int FPGA_GEMM_II = FPGA_GEMM_LOOP_II;
-#pragma omp target device(fpga)
 const unsigned int FPGA_OTHER_II = FPGA_OTHER_LOOP_II;
 const int ts = BLOCK_SIZE; // tile size
-#pragma omp target device(fpga)
 const unsigned int FPGA_PWIDTH = FPGA_MEMORY_PORT_WIDTH;
 const unsigned int SYRK_NUMACCS = SYRK_NUM_ACCS;
 const unsigned int GEMM_NUMACCS = GEMM_NUM_ACCS;

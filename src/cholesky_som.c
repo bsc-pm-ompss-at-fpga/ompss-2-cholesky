@@ -36,11 +36,10 @@
 #include "cholesky.fpga.h"
 
 #if defined(OPENBLAS_IMPL) || defined(POTRF_SMP)
-#pragma omp target device(smp) copy_inout([ts*ts]A)
+#pragma oss task copy_deps inout([ts*ts]A)
 #else
-#pragma omp target device(fpga) copy_inout([ts*ts]A)
+#pragma oss task device(fpga) copy_deps inout([ts*ts]A)
 #endif
-#pragma omp task
 void omp_potrf(type_t *A)
 {
 #if defined(OPENBLAS_IMPL) || defined(POTRF_SMP)
@@ -73,11 +72,10 @@ void omp_potrf(type_t *A)
 }
 
 #ifdef OPENBLAS_IMPL
-#pragma omp target device(smp) copy_in([ts*ts]A) copy_inout([ts*ts]B)
+#pragma oss task in([ts*ts]A) inout([ts*ts]B)
 #else
-#pragma omp target device(fpga) num_instances(TRSM_NUMACCS) copy_in([ts*ts]A) copy_inout([ts*ts]B)
+#pragma oss task device(fpga) num_instances(TRSM_NUMACCS) copy_deps in([ts*ts]A) inout([ts*ts]B)
 #endif
-#pragma omp task
 void omp_trsm(const type_t *A, type_t *B)
 {
 #ifdef OPENBLAS_IMPL
@@ -113,11 +111,10 @@ void omp_trsm(const type_t *A, type_t *B)
 }
 
 #ifdef OPENBLAS_IMPL
-#pragma omp target device(smp) copy_in([ts*ts]A) copy_inout([ts*ts]B)
+#pragma oss task in([ts*ts]A) inout([ts*ts]B)
 #else
-#pragma omp target device(fpga) num_instances(SYRK_NUMACCS) copy_in([ts*ts]A) copy_inout([ts*ts]B)
+#pragma oss task device(fpga) num_instances(SYRK_NUMACCS) copy_deps in([ts*ts]A) inout([ts*ts]B)
 #endif
-#pragma omp task
 void omp_syrk(const type_t *A, type_t *B)
 {
 #ifdef OPENBLAS_IMPL
@@ -130,7 +127,7 @@ void omp_syrk(const type_t *A, type_t *B)
 
    for (int k = 0; k < ts; ++k) {
       for (int i = 0; i < ts; ++i) {
-         #pragma HLS pipeline II=1
+         #pragma HLS pipeline II=FPGA_OTHER_II
          for (int j = 0; j < ts; ++j) {
             //NOTE: Instead of reduce the 'i' iterations, multiply by 0
             B[i*ts + j] += -A[k*ts + i] * (j < i ? 0 : A[k*ts + j]);
@@ -141,11 +138,10 @@ void omp_syrk(const type_t *A, type_t *B)
 }
 
 #ifdef OPENBLAS_IMPL
-#pragma omp target device(smp) copy_in([ts*ts]A, [ts*ts]B) copy_inout([ts*ts]C)
+#pragma oss task in([ts*ts]A, [ts*ts]B) inout([ts*ts]C)
 #else
-#pragma omp target device(fpga) num_instances(GEMM_NUMACCS) copy_in([ts*ts]A, [ts*ts]B) copy_inout([ts*ts]C)
+#pragma oss task device(fpga) num_instances(GEMM_NUMACCS) copy_deps in([ts*ts]A, [ts*ts]B) inout([ts*ts]C)
 #endif
-#pragma omp task
 void omp_gemm(const type_t *A, const type_t *B, type_t *C)
 {
 #ifdef OPENBLAS_IMPL
@@ -173,25 +169,24 @@ void omp_gemm(const type_t *A, const type_t *B, type_t *C)
 }
 
 #ifdef OPENBLAS_IMPL
-#pragma omp target device(smp) copy_inout([nt*nt*ts*ts]A)
+#pragma oss task inout([nt*nt*ts*ts]A)
 #else
-#pragma omp target device(fpga) copy_inout([nt*nt*ts*ts]A)
+#pragma oss task device(fpga) inout([nt*nt*ts*ts]A)
 #endif
-#pragma omp task
 void cholesky_blocked(const int nt, type_t* A)
 {
    for (int k = 0; k < nt; k++) {
 
       // Diagonal Block factorization
       omp_potrf( A + (k*nt + k)*ts*ts );
-      #pragma omp taskwait
+      #pragma oss taskwait
 
       // Triangular systems
       for (int i = k + 1; i < nt; i++) {
          omp_trsm( A + (k*nt + k)*ts*ts,
                    A + (k*nt + i)*ts*ts );
       }
-      #pragma omp taskwait
+      #pragma oss taskwait
 
       // Update trailing matrix
       for (int i = k + 1; i < nt; i++) {
@@ -202,7 +197,7 @@ void cholesky_blocked(const int nt, type_t* A)
          }
          omp_syrk( A + (k*nt + i)*ts*ts,
                    A + (i*nt + i)*ts*ts );
-         #pragma omp taskwait
+         #pragma oss taskwait
       }
    }
 }
@@ -344,11 +339,7 @@ int main(int argc, char* argv[])
    type_t *Ah[nt][nt];
    type_t *Ab;
    const size_t s = ts * ts * sizeof(type_t);
-#ifdef USE_DMA_MEM
-   Ab = (type_t *)nanos_fpga_malloc(s*nt*nt);
-#else
    Ab = malloc(s*nt*nt);
-#endif
    assert(Ab != NULL);
 
    for (int i = 0; i < nt; i++) {
@@ -370,7 +361,7 @@ int main(int argc, char* argv[])
    //Warm up execution
    if (check == 2) {
        cholesky_blocked(nt, Ab);
-       #pragma omp taskwait noflush
+       #pragma oss taskwait noflush([nt*nt*ts*ts]Ab)
    }
 
    const double tEndWarm = wall_time();
@@ -379,12 +370,12 @@ int main(int argc, char* argv[])
    //Performance execution
    cholesky_blocked(nt, Ab);
 
-   #pragma omp taskwait noflush
+   #pragma oss taskwait noflush([nt*nt*ts*ts]Ab)
    const double tEndExec = wall_time();
    const double tIniFlush = tEndExec;
 
    //The following TW will copy out the data moved to FPGA devices
-   #pragma omp taskwait
+   #pragma oss taskwait
 
    const double tEndFlush = wall_time();
    const double tIniToLinear = tEndFlush;
@@ -422,11 +413,7 @@ int main(int argc, char* argv[])
    printf( "================================================== \n" );
 
    // Free blocked matrix
-#ifdef USE_DMA_MEM
-   nanos_fpga_free(Ab);
-#else
    free(Ab);
-#endif
 
    //Create the JSON result file
    FILE *res_file = fopen("test_result.json", "w+");
@@ -449,7 +436,7 @@ int main(int argc, char* argv[])
       "cholesky",
       SYRK_NUM_ACCS, GEMM_NUM_ACCS, TRSM_NUM_ACCS,
       FPGA_HWRUNTIME,
-      "ompss",
+      "ompss-2",
       RUNTIME_MODE,
       ELEM_T_STR,
       n, ts, check,
