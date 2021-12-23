@@ -103,13 +103,11 @@ $(PROGRAM_)-seq: ./src/$(PROGRAM_)_$(FPGA_HWRUNTIME).c
 	$(GCC_) $(CFLAGS_) -DRUNTIME_MODE=\"seq\" $^ -o $@ $(LDFLAGS_)
 
 bitstream-i: ./src/$(PROGRAM_)_$(FPGA_HWRUNTIME).c
-	sed -i 's/\/\*syrk\*\/ num_instances(.)/\/\*syrk\*\/ num_instances($(SYRK_NUM_ACCS))/1 ; s/\/\*gemm\*\/ num_instances(.)/\/\*gemm\*\/ num_instances($(GEMM_NUM_ACCS))/1 ; s/\/\*trsm\*\/ num_instances(.)/\/\*trsm\*\/ num_instances($(TRSM_NUM_ACCS))/1' $^
 	$(MCC_) $(CFLAGS_) $(MCC_FLAGS_) $(MCC_FLAGS_I_) -DRUNTIME_MODE=\"instr\" $^ -o $(PROGRAM_)-i $(LDFLAGS_) \
 	--bitstream-generation $(FPGA_LINKER_FLAGS_) \
 	--variable=fpga_memory_port_width:$(FPGA_MEMORY_PORT_WIDTH)
 
 bitstream-p: ./src/$(PROGRAM_)_$(FPGA_HWRUNTIME).c
-	sed -i 's/\/\*syrk\*\/ num_instances(.)/\/\*syrk\*\/ num_instances($(SYRK_NUM_ACCS))/1 ; s/\/\*gemm\*\/ num_instances(.)/\/\*gemm\*\/ num_instances($(GEMM_NUM_ACCS))/1 ; s/\/\*trsm\*\/ num_instances(.)/\/\*trsm\*\/ num_instances($(TRSM_NUM_ACCS))/1' $^
 	$(MCC_) $(CFLAGS_) $(MCC_FLAGS_) -DRUNTIME_MODE=\"perf\" $^ -o $(PROGRAM_)-p $(LDFLAGS_) \
 	--bitstream-generation $(FPGA_LINKER_FLAGS_) \
 	--variable=fpga_memory_port_width:$(FPGA_MEMORY_PORT_WIDTH)
