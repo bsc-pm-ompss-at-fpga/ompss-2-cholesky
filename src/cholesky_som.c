@@ -75,7 +75,7 @@ void omp_potrf(type_t *A)
 #ifdef OPENBLAS_IMPL
 #pragma omp target device(smp) copy_in([ts*ts]A) copy_inout([ts*ts]B)
 #else
-#pragma omp target device(fpga) /*trsm*/ num_instances(1) copy_in([ts*ts]A) copy_inout([ts*ts]B)
+#pragma omp target device(fpga) num_instances(TRSM_NUMACCS) copy_in([ts*ts]A) copy_inout([ts*ts]B)
 #endif
 #pragma omp task
 void omp_trsm(const type_t *A, type_t *B)
@@ -115,7 +115,7 @@ void omp_trsm(const type_t *A, type_t *B)
 #ifdef OPENBLAS_IMPL
 #pragma omp target device(smp) copy_in([ts*ts]A) copy_inout([ts*ts]B)
 #else
-#pragma omp target device(fpga) /*syrk*/ num_instances(1) copy_in([ts*ts]A) copy_inout([ts*ts]B)
+#pragma omp target device(fpga) num_instances(SYRK_NUMACCS) copy_in([ts*ts]A) copy_inout([ts*ts]B)
 #endif
 #pragma omp task
 void omp_syrk(const type_t *A, type_t *B)
@@ -143,7 +143,7 @@ void omp_syrk(const type_t *A, type_t *B)
 #ifdef OPENBLAS_IMPL
 #pragma omp target device(smp) copy_in([ts*ts]A, [ts*ts]B) copy_inout([ts*ts]C)
 #else
-#pragma omp target device(fpga) /*gemm*/ num_instances(1) copy_in([ts*ts]A, [ts*ts]B) copy_inout([ts*ts]C)
+#pragma omp target device(fpga) num_instances(GEMM_NUMACCS) copy_in([ts*ts]A, [ts*ts]B) copy_inout([ts*ts]C)
 #endif
 #pragma omp task
 void omp_gemm(const type_t *A, const type_t *B, type_t *C)
