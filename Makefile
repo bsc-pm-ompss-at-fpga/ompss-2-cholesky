@@ -7,7 +7,7 @@ MCC         ?= fpgacc
 MCC_         = $(CROSS_COMPILE)$(MCC)
 GCC_         = $(CROSS_COMPILE)gcc
 CFLAGS_      = $(CFLAGS) -O3 -std=gnu99 -Wall -Wno-unused -Wno-unknown-pragmas
-MCC_FLAGS_   = $(MCC_FLAGS) --ompss-2 --fpga -DRUNTIME_MODE=\"perf\"
+MCC_FLAGS_   = $(MCC_FLAGS) --ompss-2 --fpga -DRUNTIME_MODE=\"perf\" --variable=fpga_check_limits_memory_port:0
 MCC_FLAGS_I_ = $(MCC_FLAGS_) --instrument -DRUNTIME_MODE=\"instr\"
 MCC_FLAGS_D_ = $(MCC_FLAGS_) --debug -g -k -DRUNTIME_MODE=\"debug\"
 LDFLAGS_     = $(LDFLAGS) -lm
