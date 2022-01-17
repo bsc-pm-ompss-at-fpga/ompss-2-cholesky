@@ -115,7 +115,7 @@ void omp_trsm(const type_t *A, type_t *B)
 #ifdef OPENBLAS_IMPL
 #pragma omp target device(smp) copy_deps
 #else
-#pragma omp target device(fpga) num_instances(SYRK_NUM_ACCS) copy_deps
+#pragma omp target device(fpga) num_instances(SYRK_NUMACCS) copy_deps
 #endif
 #pragma omp task in([ts*ts]A) inout([ts*ts]B)
 void omp_syrk(const type_t *A, type_t *B)
