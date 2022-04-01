@@ -77,6 +77,15 @@ endif
 ifdef INTERCONNECT_REGSLICE
 	FPGA_LINKER_FLAGS_ += --Wf,--interconnect_regslice,$(INTERCONNECT_REGSLICE)
 endif
+ifdef FLOORPLANNING_CONSTR
+	FPGA_LINKER_FLAGS_ += --Wf,--floorplanning_constr=$(FLOORPLANNING_CONSTR)
+endif
+ifdef SLR_SLICES
+	FPGA_LINKER_FLAGS_ += --Wf,--slr_slices=$(SLR_SLICES)
+endif
+ifdef PLACEMENT_FILE
+	FPGA_LINKER_FLAGS_ += --Wf,--placement_file=$(PLACEMENT_FILE)
+endif
 ifeq ($(FPGA_HWRUNTIME),som)
 	## Ignore the deps when spawning tasks inside the FPGA (only with SOM)
 	FPGA_LINKER_FLAGS_ += --variable=fpga_ignore_deps_task_spawn:1
