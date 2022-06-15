@@ -345,7 +345,7 @@ int main(int argc, char* argv[])
    type_t *Ab;
    const size_t s = ts * ts * sizeof(type_t);
 #ifdef USE_DMA_MEM
-   Ab = (type_t *)nanos_fpga_alloc_dma_mem(s*nt*nt);
+   Ab = (type_t *)nanos_fpga_malloc(s*nt*nt);
 #else
    Ab = malloc(s*nt*nt);
 #endif
@@ -423,7 +423,7 @@ int main(int argc, char* argv[])
 
    // Free blocked matrix
 #ifdef USE_DMA_MEM
-   nanos_fpga_free_dma_mem(Ab);
+   nanos_fpga_free(Ab);
 #else
    free(Ab);
 #endif
