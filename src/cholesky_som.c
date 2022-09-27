@@ -424,24 +424,26 @@ int main(int argc, char* argv[])
    fprintf(res_file,
       "{ \
          \"benchmark\": \"%s\", \
-         \"version\": \"%usyrk %ugemm %utrsm memport_128 noflush\", \
+         \"toolchain\": \"%s\", \
          \"hwruntime\": \"%s\", \
-         \"pm\": \"%s_%s\", \
-         \"datatype\": \"%s\", \
+         \"board\": \"%s\", \
+         \"version\": \"%usyrk %ugemm %utrsm %uBS memport_128 noflush\", \
+         \"exectype\": \"%s\", \
          \"argv\": \"%d %d %d\", \
          \"exectime\": \"%f\", \
          \"performance\": \"%f\", \
-         \"note\": \"init %f, warm %f, exec %f, flush %f, to_linear %f, check %f\" \
+         \"note\": \"datatype %s, init %f, warm %f, exec %f, flush %f, to_linear %f, check %f\" \
       }",
       "cholesky",
-      SYRK_NUM_ACCS, GEMM_NUM_ACCS, TRSM_NUM_ACCS,
-      FPGA_HWRUNTIME,
       "ompss-2",
+      FPGA_HWRUNTIME,
+      BOARD,
+      SYRK_NUM_ACCS, GEMM_NUM_ACCS, TRSM_NUM_ACCS, BLOCK_SIZE,
       RUNTIME_MODE,
-      ELEM_T_STR,
       n, ts, check,
       tEndExec - tIniExec,
       gflops,
+      ELEM_T_STR,
       tEndStart - tIniStart,
       tEndWarm - tIniWarm,
       tEndExec - tIniExec,
