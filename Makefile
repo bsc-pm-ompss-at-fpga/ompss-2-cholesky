@@ -21,7 +21,7 @@ SYRK_NUM_ACCS          ?= 1
 GEMM_NUM_ACCS          ?= 1
 TRSM_NUM_ACCS          ?= 1
 BLOCK_SIZE             ?= 32
-POTRF_SMP              ?= 1
+POTRF_SMP              ?= 0
 FPGA_GEMM_II           ?= 1
 FPGA_OTHER_II          ?= 1
 

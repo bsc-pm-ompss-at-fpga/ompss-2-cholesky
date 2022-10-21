@@ -35,6 +35,12 @@
 #include "cholesky.h"
 #include "cholesky.fpga.h"
 
+#pragma oss task in([len]data)
+void flushData(const type_t *data, int len) {
+    //dummy task to pull data from fpga
+}
+
+
 #if defined(OPENBLAS_IMPL) || defined(POTRF_SMP)
 #pragma oss task copy_deps inout([ts*ts]A)
 #else
@@ -378,7 +384,8 @@ int main(int argc, char* argv[])
    const double tEndExec = wall_time();
    const double tIniFlush = tEndExec;
 
-   //The following TW will copy out the data moved to FPGA devices
+   flushData(Ab, nt*nt*ts*ts);
+
    #pragma oss taskwait
 
    const double tEndFlush = wall_time();
