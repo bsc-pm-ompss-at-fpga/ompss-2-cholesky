@@ -1,5 +1,7 @@
 #!/bin/bash -e
 
+BUILD_TYPE=$1
+
 if [ "$BOARD" == "" ]; then
   echo "BOARD environment variable not defined"
   exit 1
@@ -15,15 +17,7 @@ PROG_NAME=cholesky
 OUT_DIR=$(pwd -P)/build
 RES_FILE=$(pwd -P)/resources_results.json
 
-if [ "$CI_NODE" == "hca-ikergune" ]; then
-  module load openblas/arm64/0.3.21
-elif [ "$CI_NODE" == "llebeig" ]; then
-  module load openblas/0.3.13/sequential
-elif [ "$CI_NODE" == "xaloc" ]; then
-  module load openblas/0.3.12/sequential
-elif [ "$CI_NODE" == "quar" ]; then
-  module load openblas/0.3.17/sequential
-else
+if ! module load openblas ; then
   echo "CI_NODE ('$CI_NODE') not supported. Cannot load OpenBLAS."
   exit 1
 fi
@@ -32,11 +26,11 @@ fi
 make clean
 mkdir -p $OUT_DIR
 
-if [ "$1" == "binary" ]; then
+if [ "$BUILD_TYPE" == "binary" ]; then
   #Only build the binaries
   make ${PROG_NAME}-p ${PROG_NAME}-i ${PROG_NAME}-d
   mv ${PROG_NAME}-p ${PROG_NAME}-i ${PROG_NAME}-d $OUT_DIR
-elif [ "$1" == "design" ]; then
+elif [ "$BUILD_TYPE" == "design" ]; then
   #Only generate the design
   make design-p design-i design-d
 
@@ -50,7 +44,7 @@ else
   mv ${PROG_NAME}_ait/${PROG_NAME}.xtasks.config $OUT_DIR/xtasks.config
 
   printf "{\"benchmark\": \"${PROG_NAME}\", " >>$RES_FILE
-  printf "\"toolchain\": \"ompss\", " >>$RES_FILE
+  printf "\"toolchain\": \"ompss-2\", " >>$RES_FILE
   printf "\"hwruntime\": \"${FPGA_HWRUNTIME}\", " >>$RES_FILE
   printf "\"board\": \"${BOARD}\", " >>$RES_FILE
   printf "\"builder\": \"${CI_NODE}\", " >>$RES_FILE
