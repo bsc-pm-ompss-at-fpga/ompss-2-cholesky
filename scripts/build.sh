@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-BUILD_TYPE=$1
+BUILD_TARGET=$1
 
 if [ "$BOARD" == "" ]; then
   echo "BOARD environment variable not defined"
@@ -26,11 +26,11 @@ fi
 make clean
 mkdir -p $OUT_DIR
 
-if [ "$BUILD_TYPE" == "binary" ]; then
+if [ "$BUILD_TARGET" == "binary" ]; then
   #Only build the binaries
   make ${PROG_NAME}-p ${PROG_NAME}-i ${PROG_NAME}-d
   mv ${PROG_NAME}-p ${PROG_NAME}-i ${PROG_NAME}-d $OUT_DIR
-elif [ "$BUILD_TYPE" == "design" ]; then
+elif [ "$BUILD_TARGET" == "design" ]; then
   #Only generate the design
   make design-p design-i design-d
 
@@ -39,7 +39,9 @@ elif [ "$BUILD_TYPE" == "design" ]; then
 else
   make bitstream-p LDFLAGS=--Wf,--disable_utilization_check
 
-  mv ${PROG_NAME}_ait/${PROG_NAME}.bin $OUT_DIR/bitstream.bin
+  if [ -e ${PROG_NAME}_ait/${PROG_NAME}.bin ] ; then
+    mv ${PROG_NAME}_ait/${PROG_NAME}.bin $OUT_DIR/bitstream.bin
+  fi
   mv ${PROG_NAME}_ait/${PROG_NAME}.bit $OUT_DIR/bitstream.bit
   mv ${PROG_NAME}_ait/${PROG_NAME}.xtasks.config $OUT_DIR/xtasks.config
 
