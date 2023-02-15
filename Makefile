@@ -3,11 +3,13 @@ all: help
 
 PROGRAM_     = cholesky
 
+CLANG       ?= clang
+CLANG_FLAGS = -fompss-2 -DRUNTIME_MODE=\"perf\"
 MCC         ?= fpgacc
 MCC_         = $(CROSS_COMPILE)$(MCC)
 GCC_         = $(CROSS_COMPILE)gcc
 CFLAGS_      = $(CFLAGS) -O3 -std=gnu99 -Wall -Wno-unused -Wno-unknown-pragmas
-MCC_FLAGS_   = $(MCC_FLAGS) --ompss-2 --fpga -DRUNTIME_MODE=\"perf\" --variable=fpga_check_limits_memory_port:0
+MCC_FLAGS_   = $(MCC_FLAGS) --ompss-2 --fpga -DRUNTIME_MODE=\"perf\" --variable=fpga_check_limits_memory_port:0 --fpga-link
 MCC_FLAGS_I_ = $(MCC_FLAGS_) --instrument -DRUNTIME_MODE=\"instr\"
 MCC_FLAGS_D_ = $(MCC_FLAGS_) --debug -g -k -DRUNTIME_MODE=\"debug\"
 LDFLAGS_     = $(LDFLAGS) -lm
@@ -21,7 +23,7 @@ SYRK_NUM_ACCS          ?= 1
 GEMM_NUM_ACCS          ?= 1
 TRSM_NUM_ACCS          ?= 1
 BLOCK_SIZE             ?= 32
-POTRF_SMP              ?= 0
+POTRF_SMP              ?= 1
 FPGA_GEMM_II           ?= 1
 FPGA_OTHER_II          ?= 1
 
@@ -104,7 +106,7 @@ help:
 	@echo 'OpenBLAS env. variables: OPENBLAS_HOME, OPENBLAS_DIR, OPENBLAS_INC_DIR, OPENBLAS_LIB_DIR, OPENBLAS_IMPL'
 
 $(PROGRAM_)-p: ./src/$(PROGRAM_)_$(FPGA_HWRUNTIME).c
-	$(MCC_) $(CFLAGS_) $(MCC_FLAGS_) $^ -o $@ $(LDFLAGS_)
+	$(CLANG) $(CFLAGS_) $(CLANG_FLAGS) $^ -o $@ $(LDFLAGS_)
 
 $(PROGRAM_)-i: ./src/$(PROGRAM_)_$(FPGA_HWRUNTIME).c
 	$(MCC_) $(CFLAGS_) $(MCC_FLAGS_I_) $^ -o $@ $(LDFLAGS_)
@@ -136,11 +138,8 @@ design-d: ./src/$(PROGRAM_)_$(FPGA_HWRUNTIME).c
 		$^ -o $(TMPFILE) $(LDFLAGS_)
 	rm $(TMPFILE)
 
-bitstream-p: ./src/$(PROGRAM_)_$(FPGA_HWRUNTIME).c
-	$(eval TMPFILE := $(shell mktemp))
-	$(MCC_) $(CFLAGS_) $(MCC_FLAGS_) --bitstream-generation $(FPGA_LINKER_FLAGS_) \
-		$^ -o $(TMPFILE) $(LDFLAGS_)
-	rm $(TMPFILE)
+bitstream-p: ./src/kernel.c
+	$(MCC_) $(CFLAGS_) $(MCC_FLAGS_) --bitstream-generation $(FPGA_LINKER_FLAGS_) $^
 
 bitstream-i: ./src/$(PROGRAM_)_$(FPGA_HWRUNTIME).c
 	$(eval TMPFILE := $(shell mktemp))
