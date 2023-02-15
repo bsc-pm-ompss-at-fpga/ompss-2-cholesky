@@ -230,7 +230,7 @@ int main(int argc, char* argv[])
 
    if ( argc < 3 ) {
       fprintf( stderr, "USAGE:\t%s <matrix size> [<check>]\n", argv[0] );
-      exit( -1 );
+      return 1;
    }
    const int  n = atoi(argv[1]); // matrix size
    int check    = argc > 2 ? atoi(argv[2]) : 1; // check result?
