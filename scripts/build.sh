@@ -10,7 +10,7 @@ elif [ "$FPGA_HWRUNTIME" == "" ]; then
   exit 1
 elif [ "$FPGA_CLOCK" == "" ]; then
   echo "FPGA_CLOCK environment variable not defined. Using default: 100"
-  FPGA_CLOCK=${FPGA_CLOCK:-100}
+  export FPGA_CLOCK=${FPGA_CLOCK:-100}
 fi
 
 PROG_NAME=cholesky
