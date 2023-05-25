@@ -61,13 +61,7 @@
 #  error FPGA_GEMM_LOOP_II variable not defined
 #endif
 
-const unsigned int FPGA_GEMM_II = FPGA_GEMM_LOOP_II;
-const unsigned int FPGA_OTHER_II = FPGA_OTHER_LOOP_II;
-const int ts = BLOCK_SIZE; // tile size
-const unsigned int FPGA_PWIDTH = FPGA_MEMORY_PORT_WIDTH;
-const unsigned int SYRK_NUMACCS = SYRK_NUM_ACCS;
-const unsigned int GEMM_NUMACCS = GEMM_NUM_ACCS;
-const unsigned int TRSM_NUMACCS = TRSM_NUM_ACCS;
+#define FPGA_HWRUNTIME "POM"
 
 #if defined(USE_DOUBLE)
 #  define type_t     double
@@ -137,38 +131,3 @@ static type_t pow_di(type_t x, int n)
    return rv;
 }
 
-static void gather_block(const int N, type_t *Alin, type_t *A)
-{
-   for (int i = 0; i < ts; i++) {
-      for (int j = 0; j < ts; j++) {
-         A[i*ts + j] = Alin[i*N + j];
-      }
-   }
-}
-
-static void scatter_block(const int N, type_t *A, type_t *Alin)
-{
-   for (int i = 0; i < ts; i++) {
-      for (int j = 0; j < ts; j++) {
-         Alin[i*N + j] = A[i*ts + j];
-      }
-   }
-}
-
-static void convert_to_blocks(const int DIM, const int N, type_t (*Alin)[N], type_t *A[DIM][DIM])
-{
-   for (int i = 0; i < DIM; i++) {
-      for (int j = 0; j < DIM; j++) {
-         gather_block(N, &Alin[i*ts][j*ts], A[i][j]);
-      }
-   }
-}
-
-static void convert_to_linear(const int DIM, const int N, type_t *A[DIM][DIM], type_t (*Alin)[N])
-{
-   for (int i = 0; i < DIM; i++) {
-      for (int j = 0; j < DIM; j++) {
-         scatter_block(N, A[i][j], (type_t *) &Alin[i*ts][j*ts]);
-      }
-   }
-}

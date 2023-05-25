@@ -34,6 +34,50 @@
 
 #include "cholesky.h"
 
+const unsigned int FPGA_GEMM_II = FPGA_GEMM_LOOP_II;
+const unsigned int FPGA_OTHER_II = FPGA_OTHER_LOOP_II;
+const int ts = BLOCK_SIZE; // tile size
+const unsigned int FPGA_PWIDTH = FPGA_MEMORY_PORT_WIDTH;
+const unsigned int SYRK_NUMACCS = SYRK_NUM_ACCS;
+const unsigned int GEMM_NUMACCS = GEMM_NUM_ACCS;
+const unsigned int TRSM_NUMACCS = TRSM_NUM_ACCS;
+
+static void gather_block(const int N, type_t *Alin, type_t *A)
+{
+   for (int i = 0; i < ts; i++) {
+      for (int j = 0; j < ts; j++) {
+         A[i*ts + j] = Alin[i*N + j];
+      }
+   }
+}
+
+static void scatter_block(const int N, type_t *A, type_t *Alin)
+{
+   for (int i = 0; i < ts; i++) {
+      for (int j = 0; j < ts; j++) {
+         Alin[i*N + j] = A[i*ts + j];
+      }
+   }
+}
+
+static void convert_to_blocks(const int DIM, const int N, type_t (*Alin)[N], type_t *A[DIM][DIM])
+{
+   for (int i = 0; i < DIM; i++) {
+      for (int j = 0; j < DIM; j++) {
+         gather_block(N, &Alin[i*ts][j*ts], A[i][j]);
+      }
+   }
+}
+
+static void convert_to_linear(const int DIM, const int N, type_t *A[DIM][DIM], type_t (*Alin)[N])
+{
+   for (int i = 0; i < DIM; i++) {
+      for (int j = 0; j < DIM; j++) {
+         scatter_block(N, A[i][j], (type_t *) &Alin[i*ts][j*ts]);
+      }
+   }
+}
+
 #pragma oss task in([len]data)
 void flushData(const type_t *data, int len) {
     //dummy task to pull data from fpga
@@ -42,7 +86,7 @@ void flushData(const type_t *data, int len) {
 #if defined(OPENBLAS_IMPL) || defined(POTRF_SMP)
 #pragma oss task inout([ts*ts]A)
 #else
-#pragma oss task device(fpga) inout([ts*ts]A)
+#pragma oss task device(fpga) inout([ts*ts]A) copy_deps
 #endif
 void omp_potrf(type_t *A)
 {
@@ -56,7 +100,7 @@ void omp_potrf(type_t *A)
 #ifdef OPENBLAS_IMPL
 #pragma oss task in([ts*ts]A) inout([ts*ts]B)
 #else
-#pragma oss task device(fpga) in([ts*ts]A) inout([ts*ts]B)
+#pragma oss task device(fpga) in([ts*ts]A) inout([ts*ts]B) copy_deps
 #endif
 void omp_trsm(const type_t *A, type_t *B)
 {
@@ -69,7 +113,7 @@ void omp_trsm(const type_t *A, type_t *B)
 #ifdef OPENBLAS_IMPL
 #pragma oss task in([ts*ts]A) inout([ts*ts]B)
 #else
-#pragma oss task device(fpga) in([ts*ts]A) inout([ts*ts]B)
+#pragma oss task device(fpga) in([ts*ts]A) inout([ts*ts]B) copy_deps
 #endif
 void omp_syrk(const type_t *A, type_t *B)
 {
@@ -82,7 +126,7 @@ void omp_syrk(const type_t *A, type_t *B)
 #ifdef OPENBLAS_IMPL
 #pragma oss task in([ts*ts]A, [ts*ts]B) inout([ts*ts]C)
 #else
-#pragma oss task device(fpga) in([ts*ts]A, [ts*ts]B) inout([ts*ts]C)
+#pragma oss task device(fpga) in([ts*ts]A, [ts*ts]B) inout([ts*ts]C) copy_deps
 #endif
 void omp_gemm(const type_t *A, const type_t *B, type_t *C)
 {
@@ -102,23 +146,23 @@ void cholesky_blocked(const int nt, type_t* A)
    for (int k = 0; k < nt; k++) {
 
       // Diagonal Block factorization
-      omp_potrf( A + (k*nt + k)*ts*ts );
+      omp_potrf( A + ((k*nt + k)*ts*ts) );
 
       // Triangular systems
       for (int i = k+1; i < nt; i++) {
-         omp_trsm( A + (k*nt + k)*ts*ts,
-                   A + (k*nt + i)*ts*ts );
+         omp_trsm( A + ((k*nt + k)*ts*ts),
+                   A + ((k*nt + i)*ts*ts) );
       }
 
       // Update trailing matrix
       for (int i = k + 1; i < nt; i++) {
          for (int j = k + 1; j < i; j++) {
-            omp_gemm( A + (k*nt + i)*ts*ts,
-                      A + (k*nt + j)*ts*ts,
-                      A + (j*nt + i)*ts*ts );
+            omp_gemm( A + ((k*nt + i)*ts*ts),
+                      A + ((k*nt + j)*ts*ts),
+                      A + ((j*nt + i)*ts*ts) );
          }
-         omp_syrk( A + (k*nt + i)*ts*ts,
-                   A + (i*nt + i)*ts*ts );
+         omp_syrk( A + ((k*nt + i)*ts*ts),
+                   A + ((i*nt + i)*ts*ts) );
       }
    }
    #pragma oss taskwait
