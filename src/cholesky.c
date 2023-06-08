@@ -134,8 +134,8 @@ void omp_trsm(const type_t *A, type_t *B)
    #pragma HLS inline
    #pragma HLS array_partition variable=A cyclic factor=FPGA_PWIDTH/64
    #pragma HLS array_partition variable=B cyclic factor=ts/FPGA_OTHER_II
-   #pragma HLS array_partition variable=tmp_row cyclic factor=ts/(2*FPGA_OTHER_II)
    type_t tmp_row[ts];
+   #pragma HLS array_partition variable=tmp_row cyclic factor=ts/(2*FPGA_OTHER_II)
 
    for (int k = 0; k < ts; ++k) {
       type_t temp = 1. / A[k*ts + k];
