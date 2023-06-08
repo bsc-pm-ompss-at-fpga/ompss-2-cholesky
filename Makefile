@@ -41,10 +41,6 @@ FPGA_OTHER_II          ?= 1
   endif
 FORCE:
 
-ifeq ($(POTRF_SMP),1)
-	CFLAGS_ += -DPOTRF_SMP
-endif
-
 ## Check if copies are needed
 ifneq (,$(findstring USE_DMA_MEM,$(CFLAGS_)))
 	# When using Kernel memory no copies are needed
@@ -82,8 +78,13 @@ COMPILER_FLAGS_D_ += -DRUNTIME_MODE=\"debug\"
 COMPILER_FLAGS_I_ += -DRUNTIME_MODE=\"instr\"
 
 ifdef USE_URAM
-	CFLAGS += -DUSE_URAM
+	COMPILER_FLAGS_ += -DUSE_URAM
 endif
+
+ifeq ($(POTRF_SMP),1)
+	COMPILER_FLAGS_ += -DPOTRF_SMP
+endif
+
 
 common-help:
 	@echo 'Supported targets:       $(PROGRAM_)-p, $(PROGRAM_)-i, $(PROGRAM_)-d, $(PROGRAM_)-seq, design-p, design-i, design-d, bitstream-p, bitstream-i, bitstream-d, clean, help'
