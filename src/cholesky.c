@@ -33,6 +33,7 @@
 #include <assert.h>
 
 #include "cholesky.h"
+#include "cholesky.fpga.h"
 
 const unsigned int FPGA_GEMM_II = FPGA_GEMM_LOOP_II;
 const unsigned int FPGA_OTHER_II = FPGA_OTHER_LOOP_II;
@@ -83,7 +84,7 @@ void flushData(const type_t *data, int len) {
     //dummy task to pull data from fpga
 }
 
-#if defined(OPENBLAS_IMPL) || defined(POTRF_SMP)
+#ifdef POTRF_SMP
 #pragma oss task inout([ts*ts]A)
 #else
 #pragma oss task device(fpga) inout([ts*ts]A) copy_deps
@@ -94,45 +95,125 @@ void omp_potrf(type_t *A)
    static const char L = 'L';
    int info;
    potrf(&L, &ts, A, &ts, &info);
+#else
+   #pragma HLS inline
+   #pragma HLS array_partition variable=A cyclic factor=FPGA_PWIDTH/64
+   for (int j = 0; j < ts; ++j) {
+      type_t tmp = A[j*ts + j];
+      for (int k = 0; k < j; ++k) {
+         #pragma HLS pipeline II=1
+         type_t Akj = A[k*ts + j];
+         tmp -= Akj*Akj;
+      }
+
+      A[j*ts + j] = sqrtf(tmp);
+
+      for (int i = j + 1; i < ts; ++i) {
+         type_t tmp = A[j*ts + i];
+         for (int k = 0; k < j; ++k) {
+            #pragma HLS pipeline II=1
+            tmp -= A[k*ts + i]*A[k*ts + j];
+         }
+         A[j*ts + i] = tmp/A[j*ts + j];
+      }
+   }
 #endif
 }
 
-#ifdef OPENBLAS_IMPL
+#ifdef TRSM_SMP
 #pragma oss task in([ts*ts]A) inout([ts*ts]B)
 #else
-#pragma oss task device(fpga) in([ts*ts]A) inout([ts*ts]B) copy_deps
+#pragma oss task device(fpga) num_instances(TRSM_NUMACCS) copy_deps in([ts*ts]A) inout([ts*ts]B)
 #endif
 void omp_trsm(const type_t *A, type_t *B)
 {
-#ifdef OPENBLAS_IMPL
+#ifdef TRSM_SMP
    trsm(CBLAS_MAT_ORDER, CBLAS_RI, CBLAS_LO, CBLAS_T, CBLAS_NU,
       ts, ts, 1.0, A, ts, B, ts);
+#else
+   #pragma HLS inline
+   #pragma HLS array_partition variable=A cyclic factor=FPGA_PWIDTH/64
+   #pragma HLS array_partition variable=B cyclic factor=ts/FPGA_OTHER_II
+   #pragma HLS array_partition variable=tmp_row cyclic factor=ts/(2*FPGA_OTHER_II)
+   type_t tmp_row[ts];
+
+   for (int k = 0; k < ts; ++k) {
+      type_t temp = 1. / A[k*ts + k];
+      for (int i = 0; i < ts; ++i) {
+         #pragma HLS unroll factor=ts/FPGA_OTHER_II
+         #pragma HLS pipeline II=1
+         //Sometimes Vivado HLS doesn't achieve II=1 because it detects
+         //some false dependence on B, this fixes the issue. Same for the other loop
+         #pragma HLS DEPENDENCE variable=B inter false
+         B[k*ts + i] = tmp_row[i] = temp * B[k*ts + i];
+      }
+
+      for (int j = k + 1; j < ts; ++j) {
+         #pragma HLS pipeline II=FPGA_OTHER_II
+         #pragma HLS DEPENDENCE variable=B inter false
+         for (int i = 0; i < ts; ++i) {
+            B[j*ts + i] -= A[k*ts + j] * tmp_row[i];
+         }
+      }
+   }
 #endif
 }
 
 #ifdef OPENBLAS_IMPL
 #pragma oss task in([ts*ts]A) inout([ts*ts]B)
 #else
-#pragma oss task device(fpga) in([ts*ts]A) inout([ts*ts]B) copy_deps
+#pragma oss task device(fpga) num_instances(SYRK_NUMACCS) copy_deps in([ts*ts]A) inout([ts*ts]B)
 #endif
 void omp_syrk(const type_t *A, type_t *B)
 {
 #ifdef OPENBLAS_IMPL
    syrk(CBLAS_MAT_ORDER, CBLAS_LO, CBLAS_NT,
       ts, ts, -1.0, A, ts, 1.0, B, ts);
+#else
+   #pragma HLS inline
+   #pragma HLS array_partition variable=A cyclic factor=ts/FPGA_OTHER_II
+   #pragma HLS array_partition variable=B cyclic factor=ts/FPGA_OTHER_II
+
+   for (int k = 0; k < ts; ++k) {
+      for (int i = 0; i < ts; ++i) {
+         #pragma HLS pipeline II=FPGA_OTHER_II
+         for (int j = 0; j < ts; ++j) {
+            //NOTE: Instead of reduce the 'i' iterations, multiply by 0
+            B[i*ts + j] += -A[k*ts + i] * (j < i ? 0 : A[k*ts + j]);
+         }
+      }
+   }
 #endif
 }
 
 #ifdef OPENBLAS_IMPL
 #pragma oss task in([ts*ts]A, [ts*ts]B) inout([ts*ts]C)
 #else
-#pragma oss task device(fpga) in([ts*ts]A, [ts*ts]B) inout([ts*ts]C) copy_deps
+#pragma oss task device(fpga) num_instances(GEMM_NUMACCS) copy_deps in([ts*ts]A, [ts*ts]B) inout([ts*ts]C)
 #endif
 void omp_gemm(const type_t *A, const type_t *B, type_t *C)
 {
 #ifdef OPENBLAS_IMPL
    gemm(CBLAS_MAT_ORDER, CBLAS_NT, CBLAS_T,
       ts, ts, ts, -1.0, A, ts, B, ts, 1.0, C, ts);
+#else
+   #pragma HLS inline
+   #pragma HLS array_partition variable=A cyclic factor=ts/(2*FPGA_GEMM_II)
+   #pragma HLS array_partition variable=B cyclic factor=FPGA_PWIDTH/64
+   #pragma HLS array_partition variable=C cyclic factor=ts/FPGA_GEMM_II
+   #ifdef USE_URAM
+   #pragma HLS resource variable=A core=XPM_MEMORY uram
+   #pragma HLS resource variable=B core=XPM_MEMORY uram
+   #endif
+
+   for (int k = 0; k < ts; ++k) {
+      for (int i = 0; i < ts; ++i) {
+         #pragma HLS pipeline II=FPGA_GEMM_II
+         for (int j = 0; j < ts; ++j) {
+            C[i*ts + j] += A[k*ts + j] * -B[k*ts + i];
+         }
+      }
+   }
 #endif
 }
 
