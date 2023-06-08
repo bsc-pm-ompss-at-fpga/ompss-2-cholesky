@@ -8,11 +8,20 @@ COMPILER_FLAGS_   = $(CFLAGS) -fompss-2 -fompss-fpga-wrapper-code
 COMPILER_FLAGS_D_ = $(COMPILER_FLAGS_) -g -fompss-fpga-hls-tasks-dir $(PWD)
 LINKER_FLAGS_     = $(LDFLAGS)
 
-AIT_FLAGS__        = --name=$(PROGRAM_) --board=$(BOARD) -c=$(FPGA_CLOCK) -k
+AIT_FLAGS__        = --name=$(PROGRAM_) --board=$(BOARD) -c=$(FPGA_CLOCK) -k --verbose --picos_tm_size=256 --picos_dm_size=645 --picos_vm_size=775 --max_args_per_task=3 --max_deps_per_task=3 --max_copies_per_task=3
 AIT_FLAGS_DESIGN__ = --to_step=design
 AIT_FLAGS_D__      = --debug_intfs=both
 
 # Optional optimization FPGA variables
+ifdef INTERCONNECT_PRIORITIES
+	AIT_FLAGS__ += --interconnect_priorities
+endif
+ifdef INTERCONNECT_OPT
+	AIT_FLAGS__ += --interconnect_opt=$(INTERCONNECT_OPT)
+endif
+ifdef INTERCONNECT_REGSLICE
+	AIT_FLAGS__ += --interconnect_regslice=$(INTERCONNECT_REGSLICE)
+endif
 ifdef FPGA_MEMORY_PORT_WIDTH
 	COMPILER_FLAGS_ += -fompss-fpga-memory-port-width $(FPGA_MEMORY_PORT_WIDTH)
 endif
