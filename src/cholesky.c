@@ -202,8 +202,13 @@ void omp_gemm(const type_t A[ts*ts], const type_t B[ts*ts], type_t C[ts*ts])
    #pragma HLS array_partition variable=B cyclic factor=FPGA_PWIDTH/64
    #pragma HLS array_partition variable=C cyclic factor=ts/FPGA_GEMM_II
    #ifdef USE_URAM
-   #pragma HLS bind_storage variable=A type=RAM_T2P impl=URAM
-   #pragma HLS bind_storage variable=B type=RAM_T2P impl=URAM
+   #if defined(__VITIS_HLS__)
+      #pragma HLS bind_storage variable=A type=RAM_T2P impl=URAM
+      #pragma HLS bind_storage variable=B type=RAM_T2P impl=URAM
+   #else
+      #pragma HLS resource variable=A core=XPM_MEMORY uram
+      #pragma HLS resource variable=B core=XPM_MEMORY uram
+   #endif
    #endif
 
    for (int k = 0; k < ts; ++k) {
