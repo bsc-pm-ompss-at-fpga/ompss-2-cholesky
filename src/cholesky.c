@@ -35,16 +35,59 @@
 #include "cholesky.h"
 #include "cholesky.fpga.h"
 
+const unsigned int FPGA_GEMM_II = FPGA_GEMM_LOOP_II;
+const unsigned int FPGA_OTHER_II = FPGA_OTHER_LOOP_II;
+const int ts = BLOCK_SIZE; // tile size
+const unsigned int FPGA_PWIDTH = FPGA_MEMORY_PORT_WIDTH;
+const unsigned int SYRK_NUMACCS = SYRK_NUM_ACCS;
+const unsigned int GEMM_NUMACCS = GEMM_NUM_ACCS;
+const unsigned int TRSM_NUMACCS = TRSM_NUM_ACCS;
+
+static void gather_block(const int N, type_t *Alin, type_t *A)
+{
+   for (int i = 0; i < ts; i++) {
+      for (int j = 0; j < ts; j++) {
+         A[i*ts + j] = Alin[i*N + j];
+      }
+   }
+}
+
+static void scatter_block(const int N, type_t *A, type_t *Alin)
+{
+   for (int i = 0; i < ts; i++) {
+      for (int j = 0; j < ts; j++) {
+         Alin[i*N + j] = A[i*ts + j];
+      }
+   }
+}
+
+static void convert_to_blocks(const int DIM, const int N, type_t (*Alin)[N], type_t *A[DIM][DIM])
+{
+   for (int i = 0; i < DIM; i++) {
+      for (int j = 0; j < DIM; j++) {
+         gather_block(N, &Alin[i*ts][j*ts], A[i][j]);
+      }
+   }
+}
+
+static void convert_to_linear(const int DIM, const int N, type_t *A[DIM][DIM], type_t (*Alin)[N])
+{
+   for (int i = 0; i < DIM; i++) {
+      for (int j = 0; j < DIM; j++) {
+         scatter_block(N, A[i][j], (type_t *) &Alin[i*ts][j*ts]);
+      }
+   }
+}
+
 #pragma oss task in([len]data)
 void flushData(const type_t *data, int len) {
     //dummy task to pull data from fpga
 }
 
-
-#if defined(OPENBLAS_IMPL) || defined(POTRF_SMP)
-#pragma oss task copy_deps inout([ts*ts]A)
+#ifdef POTRF_SMP
+#pragma oss task inout([ts*ts]A)
 #else
-#pragma oss task device(fpga) copy_deps inout([ts*ts]A)
+#pragma oss task device(fpga) inout([ts*ts]A) copy_deps
 #endif
 void omp_potrf(type_t *A)
 {
@@ -77,22 +120,22 @@ void omp_potrf(type_t *A)
 #endif
 }
 
-#ifdef OPENBLAS_IMPL
+#ifdef TRSM_SMP
 #pragma oss task in([ts*ts]A) inout([ts*ts]B)
 #else
 #pragma oss task device(fpga) num_instances(TRSM_NUMACCS) copy_deps in([ts*ts]A) inout([ts*ts]B)
 #endif
 void omp_trsm(const type_t *A, type_t *B)
 {
-#ifdef OPENBLAS_IMPL
+#ifdef TRSM_SMP
    trsm(CBLAS_MAT_ORDER, CBLAS_RI, CBLAS_LO, CBLAS_T, CBLAS_NU,
       ts, ts, 1.0, A, ts, B, ts);
 #else
    #pragma HLS inline
    #pragma HLS array_partition variable=A cyclic factor=FPGA_PWIDTH/64
    #pragma HLS array_partition variable=B cyclic factor=ts/FPGA_OTHER_II
-   #pragma HLS array_partition variable=tmp_row cyclic factor=ts/(2*FPGA_OTHER_II)
    type_t tmp_row[ts];
+   #pragma HLS array_partition variable=tmp_row cyclic factor=ts/(2*FPGA_OTHER_II)
 
    for (int k = 0; k < ts; ++k) {
       type_t temp = 1. / A[k*ts + k];
@@ -148,7 +191,7 @@ void omp_syrk(const type_t *A, type_t *B)
 #else
 #pragma oss task device(fpga) num_instances(GEMM_NUMACCS) copy_deps in([ts*ts]A, [ts*ts]B) inout([ts*ts]C)
 #endif
-void omp_gemm(const type_t *A, const type_t *B, type_t *C)
+void omp_gemm(const type_t A[ts*ts], const type_t B[ts*ts], type_t C[ts*ts])
 {
 #ifdef OPENBLAS_IMPL
    gemm(CBLAS_MAT_ORDER, CBLAS_NT, CBLAS_T,
@@ -159,8 +202,13 @@ void omp_gemm(const type_t *A, const type_t *B, type_t *C)
    #pragma HLS array_partition variable=B cyclic factor=FPGA_PWIDTH/64
    #pragma HLS array_partition variable=C cyclic factor=ts/FPGA_GEMM_II
    #ifdef USE_URAM
-   #pragma HLS resource variable=A core=XPM_MEMORY uram
-   #pragma HLS resource variable=B core=XPM_MEMORY uram
+   #if defined(__VITIS_HLS__)
+      #pragma HLS bind_storage variable=A type=RAM_T2P impl=URAM
+      #pragma HLS bind_storage variable=B type=RAM_T2P impl=URAM
+   #else
+      #pragma HLS resource variable=A core=XPM_MEMORY uram
+      #pragma HLS resource variable=B core=XPM_MEMORY uram
+   #endif
    #endif
 
    for (int k = 0; k < ts; ++k) {
@@ -184,29 +232,23 @@ void cholesky_blocked(const int nt, type_t* A)
    for (int k = 0; k < nt; k++) {
 
       // Diagonal Block factorization
-      omp_potrf( A + (k*nt + k)*ts*ts );
+      omp_potrf( A + ((k*nt + k)*ts*ts) );
 
       // Triangular systems
-      #ifdef OPENBLAS_IMPL
       for (int i = k+1; i < nt; i++) {
-      #else
-      // Create in inverse order because Picos wakes up ready
-      // chain tasks in that order
-      for (int i = nt-1; i >= k+1; i--) {
-      #endif
-         omp_trsm( A + (k*nt + k)*ts*ts,
-                   A + (k*nt + i)*ts*ts );
+         omp_trsm( A + ((k*nt + k)*ts*ts),
+                   A + ((k*nt + i)*ts*ts) );
       }
 
       // Update trailing matrix
       for (int i = k + 1; i < nt; i++) {
          for (int j = k + 1; j < i; j++) {
-            omp_gemm( A + (k*nt + i)*ts*ts,
-                      A + (k*nt + j)*ts*ts,
-                      A + (j*nt + i)*ts*ts );
+            omp_gemm( A + ((k*nt + i)*ts*ts),
+                      A + ((k*nt + j)*ts*ts),
+                      A + ((j*nt + i)*ts*ts) );
          }
-         omp_syrk( A + (k*nt + i)*ts*ts,
-                   A + (i*nt + i)*ts*ts );
+         omp_syrk( A + ((k*nt + i)*ts*ts),
+                   A + ((i*nt + i)*ts*ts) );
       }
    }
    #pragma oss taskwait
@@ -318,7 +360,7 @@ int main(int argc, char* argv[])
 
    if ( argc < 3 ) {
       fprintf( stderr, "USAGE:\t%s <matrix size> [<check>]\n", argv[0] );
-      exit( -1 );
+      return 1;
    }
    const int  n = atoi(argv[1]); // matrix size
    int check    = argc > 2 ? atoi(argv[2]) : 1; // check result?
@@ -371,7 +413,7 @@ int main(int argc, char* argv[])
    //Warm up execution
    if (check == 2) {
        cholesky_blocked(nt, Ab);
-       #pragma oss taskwait noflush([nt*nt*ts*ts]Ab)
+       #pragma oss taskwait
    }
 
    const double tEndWarm = wall_time();
@@ -380,7 +422,7 @@ int main(int argc, char* argv[])
    //Performance execution
    cholesky_blocked(nt, Ab);
 
-   #pragma oss taskwait noflush([nt*nt*ts*ts]Ab)
+   #pragma oss taskwait
    const double tEndExec = wall_time();
    const double tIniFlush = tEndExec;
 
