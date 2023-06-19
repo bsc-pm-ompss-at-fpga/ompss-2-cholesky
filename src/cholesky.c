@@ -191,7 +191,7 @@ void omp_syrk(const type_t *A, type_t *B)
 #else
 #pragma oss task device(fpga) num_instances(GEMM_NUMACCS) copy_deps in([ts*ts]A, [ts*ts]B) inout([ts*ts]C)
 #endif
-void omp_gemm(const type_t *A, const type_t *B, type_t *C)
+void omp_gemm(const type_t A[ts*ts], const type_t B[ts*ts], type_t C[ts*ts])
 {
 #ifdef OPENBLAS_IMPL
    gemm(CBLAS_MAT_ORDER, CBLAS_NT, CBLAS_T,
