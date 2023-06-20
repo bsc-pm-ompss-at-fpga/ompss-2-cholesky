@@ -37,7 +37,7 @@ elif [ "$BUILD_TARGET" == "design" ]; then
   #Remove OUT_DIR directory since we are not generating output products
   rm -rf $OUT_DIR
 else
-  make bitstream-p LDFLAGS=--Wf,--disable_utilization_check
+  make bitstream-p
 
   if [ -e ${PROG_NAME}_ait/${PROG_NAME}.bin ] ; then
     mv ${PROG_NAME}_ait/${PROG_NAME}.bin $OUT_DIR/bitstream.bin
